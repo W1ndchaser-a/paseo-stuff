@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.1.0-beta.11 — 2026-10-11
+
+- Fix npm installation on Paseo 0.11. The npm package omitted `icon.svg`, the
+  icon the provider registers, and Paseo 0.11.2 rejects the plugin with
+  `Invalid plugin provider icon "icon.svg"`. This affected the npm package and
+  the registry entry `geoqiao/deepseek-harness`, which installs it; the Git
+  source was not affected. The package now ships the icon, and a test checks
+  that the registered icon is in the package `files` list.
+- Ship `OVERVIEW.md` in the package for the Paseo plugin registry listing.
+- Runtime code is unchanged from beta.10.
+
 ## 0.1.0-beta.10 — 2026-09-29
 
 - Keep DSH reasoning out of assistant replies. dsh-acp sends thought and answer

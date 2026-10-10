@@ -110,6 +110,23 @@ describe.sequential("DeepSeek Harness provider", () => {
     await cleanup();
   });
 
+  it("ships the registered provider icon in the npm package", async () => {
+    const registerProvider = vi.fn();
+    const cleanup = serverEntry({
+      registerProvider,
+    } as unknown as PluginServerContext);
+    const icon: unknown = registerProvider.mock.calls[0]?.[0]?.icon;
+    await cleanup();
+
+    const root = fileURLToPath(new URL("..", import.meta.url));
+    const pkg = JSON.parse(
+      await readFile(join(root, "package.json"), "utf8"),
+    ) as { files: string[] };
+    expect(typeof icon).toBe("string");
+    expect(pkg.files).toContain(icon);
+    expect((await readFile(join(root, icon as string))).length).toBeGreaterThan(0);
+  });
+
   it("discovers catalog values, runs turns, preserves tool tails, and resumes without replay", async () => {
     const connection = await connect();
     const collector = collect(connection);

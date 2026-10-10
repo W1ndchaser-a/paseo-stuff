@@ -14,9 +14,13 @@
 - Paseo's registry lists the plugin as `geoqiao/math-renderer`, pinned to commit
   `abc4d96`. Its record names the tag `readable-agent-activity-v0.1.0-beta.9`; the
   plugin directory at that commit is identical to `math-renderer-v0.1.0-beta.4`.
+- Install commands, run on an isolated Paseo 0.11.2 daemon (temporary home, relay
+  disabled, no client connected): `paseo plugin add geoqiao/math-renderer` installed
+  commit `abc4d96` and the `git:` command with tag `math-renderer-v0.1.0-beta.4` installed
+  `f913621`; both ran the preparation commands and reached `running` with `Plugin ready`.
+  The old source without `git:` is rejected there as a registry ID.
 - **Not verified:** formula rendering, chat Find and the host fixtures against 0.11
-  sources, and any 0.11 client. The registry and `git:` install commands follow Paseo's
-  source reference and were not run.
+  sources, and any 0.11 client.
 
 ## Beta.4 — Paseo 0.9.2 / 0.10.0-beta.1 compatibility (2026-09-28)
 
