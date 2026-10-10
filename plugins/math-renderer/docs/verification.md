@@ -1,5 +1,23 @@
 # Verification scope
 
+## Paseo 0.11.2 check (2026-10-11)
+
+- No runtime change; the released beta.4 code is unchanged. This check accompanies the
+  new `OVERVIEW.md` and the install commands for Paseo 0.11.
+- After a clean `npm ci` and both prepare steps, `npm run check` passed on Node
+  **24.18.0** with the pinned **0.9.2** packages: typecheck, zero lint warnings/errors
+  and **6 files / 66 tests**. An isolated copy with the **0.11.2** SDK/protocol/client
+  packages installed without saving passed the same check.
+- The existing local directory installation (`paseo-math-renderer-prototype`) reports
+  `running` on a Paseo 0.11.2 daemon, and its log shows `Plugin ready` with no error
+  output.
+- Paseo's registry lists the plugin as `geoqiao/math-renderer`, pinned to commit
+  `abc4d96`. Its record names the tag `readable-agent-activity-v0.1.0-beta.9`; the
+  plugin directory at that commit is identical to `math-renderer-v0.1.0-beta.4`.
+- **Not verified:** formula rendering, chat Find and the host fixtures against 0.11
+  sources, and any 0.11 client. The registry and `git:` install commands follow Paseo's
+  source reference and were not run.
+
 ## Beta.4 — Paseo 0.9.2 / 0.10.0-beta.1 compatibility (2026-09-28)
 
 - Manifest range: `>=0.9.0-beta.1`, a minimum-only range under Paseo's requirements

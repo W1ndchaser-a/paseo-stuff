@@ -14,12 +14,14 @@
 - The current Cafe submission scope is Readable Agent Activity, DeepSeek Harness, Math Renderer and MaKa. Paseo Pet stays in this repository but is excluded from Cafe submissions unless the user changes that decision.
 - MaKa is unmaintained since 2026-09-24: its Cafe entry stays listed with an unmaintained caveat, and it is excluded from upstream tracking, compatibility work and releases unless the user revives it.
 - Paseo Pet is paused (unmaintained) since 2026-09-28: it keeps its 0.1.1 / Paseo 0.8.0 support line and disabled local install, and is excluded from upstream tracking, Paseo 0.9 migration, compatibility work and releases unless the user resumes it.
+- Paseo's official registry (`getpaseo/plugins`, paseo.sh/plugins) lists the four Cafe-scope plugins as `geoqiao/<slug>`. npm records receive automatic bump PRs; a Git record changes only through a new submission or a PR against that record. Keep `OVERVIEW.md` beside each maintained plugin's manifest, following the registry's overview contract (no install commands, badges or em dashes), and keep it in the npm `files` list for npm-distributed plugins.
+- Paseo 0.11 resolves a bare `owner/name` source through the registry. Document direct Git installs with the `git:` prefix.
 - Publish npm packages only through `.github/workflows/publish-npm.yml` (trusted publishing, triggered by a GitHub release). Do not publish from a local machine or add npm tokens.
 - Preserve existing plugin/catalog IDs when migrating source pointers. Old standalone repositories retain history and migration notices, not parallel ongoing development.
 - Distinguish submitted PRs from accepted/deployed catalog entries. Fix genuine upstream admission problems in separate Cafe PRs; do not work around them by duplicating plugins or weakening checks.
 
 ## Paseo contracts
-- Current verification target is Paseo app/daemon 0.10.0-beta.1 and stable 0.9.2, with SDK devDependencies pinned to 0.9.2; Paseo Pet remains on 0.8.0. Verify versions before introducing APIs; do not label beta verification as stable-release acceptance.
+- Current verification target is Paseo app/daemon 0.11.2, 0.10.0-beta.1 and stable 0.9.2, with SDK devDependencies pinned to 0.9.2 and the 0.11.2 SDK installed without saving for the extra check; Paseo Pet remains on 0.8.0. Verify versions before introducing APIs; do not label beta verification as stable-release acceptance.
 - Declare `requirements.paseo` as a minimum (`>=`), following the Paseo requirements reference. Raise it only when adopting a newer API; add an upper bound only for a release known to be incompatible. Record the actually tested versions in each plugin's docs, not in the range.
 - Fetch https://paseo.sh/llms.txt, then the version-matching plugin reference before adopting unfamiliar APIs.
 - Client entries: `index.client.tsx`, client UI under `client/`.

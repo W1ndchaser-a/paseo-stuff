@@ -5,7 +5,8 @@ per formula: **Show LaTeX** and **Copy LaTeX**. No extra panel or duplicate mess
 
 > **Experimental beta — 0.1.0-beta.4.** Requires Paseo app and daemon
 > **0.9.0-beta.1 or newer**. Checked offline against Paseo 0.9.2 and 0.10.0-beta.1,
-> and live on a 0.10.0-beta.1 daemon in the hosted web client. Replies stay native while
+> and live on a 0.10.0-beta.1 daemon in the hosted web client. The checks also pass with
+> the 0.11.2 SDK and the plugin loads on a 0.11.2 daemon. Replies stay native while
 > streaming; supported block formulas render after completion.
 > Inline math is not typeset. Native iOS/Android acceptance and complete native Markdown
 > parity are not finished. Read the limitations before enabling this trusted plugin.
@@ -18,12 +19,22 @@ per formula: **Show LaTeX** and **Copy LaTeX**. No extra panel or duplicate mess
 ## Install
 
 Plugins run as trusted, unsandboxed code. Review the source, choose the target daemon,
-and enable plugins in Paseo before installing the pinned prerelease:
+and enable plugins in Paseo before installing. On Paseo 0.11 or later, install the
+reviewed [registry](https://paseo.sh/plugins) entry `geoqiao/math-renderer`:
 
 ```sh
-paseo plugin add geoqiao/paseo-stuff:plugins/math-renderer --ref math-renderer-v0.1.0-beta.4 --host <host:port>
+paseo plugin add geoqiao/math-renderer --host <host:port>
 paseo --host <host:port> plugin ls
 ```
+
+To install the pinned prerelease directly from Git instead:
+
+```sh
+paseo plugin add git:geoqiao/paseo-stuff:plugins/math-renderer --ref math-renderer-v0.1.0-beta.4 --host <host:port>
+```
+
+Paseo 0.11 reads a bare `owner/name` source as a registry ID, so the `git:` prefix is
+required there. Paseo CLIs before 0.11 take the same Git source without the prefix.
 
 The manifest ID is `math-renderer`. This directory is independently installable;
 it does not import any sibling plugin or depend on root-installed packages.
@@ -144,7 +155,7 @@ the daemon or auto-enable a disabled installation.
 The 0.9 migration adds real pinned host presentation/identity/Find-model tests and
 bundle lifecycle checks for both native-reply actions. Beta.4 pins those host sources
 to Paseo v0.9.2 (identical in v0.10.0-beta.1) and passes the checks with the 0.9.2 and
-0.10.0-beta.1 SDK packages. Historical evidence follows;
+0.10.0-beta.1 SDK packages, and with the 0.11.2 packages. Historical evidence follows;
 see [verification details](docs/verification.md) for current checks and limits.
 
 - Typecheck, lint and **57 automated tests** passed locally, including the complete

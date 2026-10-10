@@ -1,5 +1,22 @@
 # Verification and limits
 
+## Paseo 0.11.2 check (2026-10-11)
+
+- No runtime change; the released beta.10 code is unchanged. This check
+  accompanies the new `OVERVIEW.md`, its entry in the npm `files` list and the
+  install commands for Paseo 0.11.
+- `npm run check` on Node 24.18.0 with SDK 0.9.2: typecheck, lint with zero
+  warnings/errors and **74 tests / 3 files**. An isolated copy with SDK 0.11.2
+  (client, plugin, protocol) installed without saving gives the same result.
+- `npm pack --dry-run` lists `OVERVIEW.md` among the 10 packaged files.
+- The existing local directory installation reports `running` on a Paseo
+  0.11.2 daemon, and its log shows `Plugin ready` with no error output.
+- Paseo's registry lists the plugin as `geoqiao/deepseek-harness`, pinned to
+  npm `paseo-deepseek-harness@0.1.0-beta.10`.
+- Not verified: a real turn, resume or tool call on 0.11.2 for this check. The
+  registry and `git:` install commands follow Paseo's source reference and were
+  not run.
+
 ## Beta.8 — minimum-only DSH version check (2026-09-29)
 
 - Beta.7 accepted only six exact DSH releases, so the official `0.2.0-rc.1`

@@ -16,7 +16,8 @@ shared runtime or root-hoisted dependency tree.
 
 Activity **0.1.0-beta.9**, DeepSeek Harness **0.1.0-beta.10** and Math Renderer
 **0.1.0-beta.4** declare minimum-only Paseo requirements and are checked against the
-Paseo **0.9.2** and **0.10.0-beta.1** SDKs and host pipeline source. A minimum is not
+Paseo **0.9.2** and **0.10.0-beta.1** SDKs and host pipeline source, and their checks
+also pass with the **0.11.2** SDK. A minimum is not
 a promise about later releases; each plugin's verification record lists what was
 tested. MaKa **0.1.0-beta.4** (final, unmaintained) stays limited to Paseo 0.9.
 Pet remains on its existing 0.8 support range (0.1.1, paused; not migrated to 0.9).
@@ -27,14 +28,23 @@ their permissions and operational requirements differ.
 
 ## Install a plugin from this repository
 
-For Math Renderer, run against the intended daemon after reviewing
-the plugin and enabling plugins in Paseo:
+Review the plugin and enable plugins in Paseo first. On Paseo 0.11 or later, install
+the reviewed [registry](https://paseo.sh/plugins) entry on the intended daemon, for
+example Math Renderer:
 
 ```sh
-paseo plugin add geoqiao/paseo-stuff:plugins/math-renderer --ref math-renderer-v0.1.0-beta.4 --host <host:port>
+paseo plugin add geoqiao/math-renderer --host <host:port>
+```
+
+To install a pinned tag directly from this repository instead:
+
+```sh
+paseo plugin add git:geoqiao/paseo-stuff:plugins/math-renderer --ref math-renderer-v0.1.0-beta.4 --host <host:port>
 ```
 
 The `:plugins/<directory>` suffix selects one plugin, not the whole repository.
+Paseo 0.11 reads a bare `owner/name` source as a registry ID, so the `git:` prefix is
+required there. Paseo CLIs before 0.11 take the same Git source without the prefix.
 Do not enable two installations of the same timeline renderer or provider.
 
 This is the new development and release home for Readable Agent Activity and
@@ -63,7 +73,7 @@ Use the public Paseo SDK. Typecheck before reloading the exact installed ID on a
 explicit host; do not restart the daemon or enable an intentionally disabled plugin.
 See [AGENTS.md](AGENTS.md) for repository development rules.
 
-## Versions and Cafe
+## Versions, registry and Cafe
 
 Each plugin maintains its own `package.json.version`. Git tags use
 `<plugin-id>-v<version>` so releases remain independent in the monorepo.
@@ -77,6 +87,24 @@ existing tag again, run the workflow manually with that tag; versions already
 on npm are skipped. A new npm package must first trust the workflow once with
 `npm trust github <package> --file publish-npm.yml --repo geoqiao/paseo-stuff --allow-publish`
 and be added to the workflow's plugin list.
+
+Paseo's [plugin registry](https://github.com/getpaseo/plugins) (browsable at
+[paseo.sh/plugins](https://paseo.sh/plugins)) imported the four Cafe entries on
+2026-10-06. Each record pins one reviewed artifact:
+
+| Registry ID | Plugin directory | Pinned artifact |
+| --- | --- | --- |
+| `geoqiao/agent-activity` | `plugins/agent-activity` | Git commit `abc4d96` (0.1.0-beta.9) |
+| `geoqiao/deepseek-harness` | `plugins/deepseek-harness` | npm `paseo-deepseek-harness@0.1.0-beta.10` |
+| `geoqiao/math-renderer` | `plugins/math-renderer` | Git commit `abc4d96` (0.1.0-beta.4) |
+| `geoqiao/maka` | `plugins/maka` | Git commit `abc4d96` (0.1.0-beta.4, unmaintained) |
+
+The registry opens a bump PR by itself for a new npm version. A Git record changes
+only after a new submission or a PR against that record, so a release of a
+Git-distributed plugin needs that step. Each maintained plugin keeps an
+`OVERVIEW.md` beside its manifest; the registry shows it on the listing page once a
+record pins a commit or package that contains it, replacing the overview the
+registry wrote during the import.
 
 A [Paseo Cafe](https://github.com/paseo-cafe/paseo-cafe) entry can point to a subdirectory:
 

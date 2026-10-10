@@ -2,7 +2,7 @@
 
 **Formatted, highlighted tool-call JSON. Twenty-line previews. Recognizable tool icons.**
 
-**Version 0.1.0-beta.9** · [Release notes](CHANGELOG.md) · Paseo 0.8 to 0.10.0-beta.1. Tool cards need Full detail;
+**Version 0.1.0-beta.9** · [Release notes](CHANGELOG.md) · Paseo 0.8 or later, checked through SDK 0.11.2. Tool cards need Full detail;
 a Command Center action switches to native tool rows for Summary.
 
 ## What it does
@@ -74,9 +74,9 @@ Virtual-list remounts reset local disclosure state.
 
 ## Compatibility
 
-**Paseo 0.8.0 to 0.10.0-beta.1 · tool cards need Full detail · experimental beta.**
-Beta.9 passes its checks with SDK 0.9.2 and 0.10.1 and pinned 0.8.0/0.9.2 host
-fixtures. Beta.8 rendered live on a 0.10.0-beta.1 daemon in the hosted web client with
+**Paseo 0.8.0 or later · tool cards need Full detail · experimental beta.**
+Beta.9 passes its checks with SDK 0.9.2, 0.10.1 and 0.11.2 and pinned 0.8.0/0.9.2 host
+fixtures. No live 0.11 daemon was tested. Beta.8 rendered live on a 0.10.0-beta.1 daemon in the hosted web client with
 Full detail. The manifest sets
 only a minimum, `>=0.8.0`, as Paseo recommends; later releases are not tested.
 
@@ -117,11 +117,22 @@ Plugins are **trusted, unsandboxed code**. This plugin is client-only and uses p
 SDK modules, React Native primitives and host theme colors. It has no runtime network,
 filesystem, process or daemon-side behavior. Contributions unregister on cleanup.
 
-Install the pinned prerelease on the intended daemon:
+On Paseo 0.11 or later, install the reviewed [registry](https://paseo.sh/plugins) entry on
+the intended daemon. Its registry ID is `geoqiao/agent-activity`; the installed plugin ID
+stays `readable-agent-activity`:
 
 ```sh
-paseo plugin add geoqiao/paseo-stuff:plugins/agent-activity --ref readable-agent-activity-v0.1.0-beta.9 --host <your-host>
+paseo plugin add geoqiao/agent-activity --host <your-host>
 ```
+
+To install the pinned prerelease directly from Git instead:
+
+```sh
+paseo plugin add git:geoqiao/paseo-stuff:plugins/agent-activity --ref readable-agent-activity-v0.1.0-beta.9 --host <your-host>
+```
+
+Paseo 0.11 reads a bare `owner/name` source as a registry ID, so the `git:` prefix is
+required there. Paseo CLIs before 0.11 take the same Git source without the prefix.
 
 Installation enables the plugin with tool cards active. Review its source/trust
 requirements, then use Full detail or switch to native tool rows first. Do not create a duplicate installation. Existing installations

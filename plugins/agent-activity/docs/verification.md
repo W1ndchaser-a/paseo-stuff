@@ -1,5 +1,18 @@
 # Verification and remaining gaps
 
+## Paseo 0.11.2 check (2026-10-11)
+
+- No runtime change; the released beta.9 code is unchanged. This check accompanies the
+  new `OVERVIEW.md` and the install commands for Paseo 0.11.
+- `npm run check` on Node **24.18.0** with the pinned SDK **0.9.2**: typecheck, lint
+  with no warnings/errors, **8 files / 253 tests**. An isolated copy with SDK **0.11.2**
+  (client, plugin, protocol) installed without saving gives the same result.
+- Paseo's registry lists the plugin as `geoqiao/agent-activity`, pinned to commit
+  `abc4d96` (tag `readable-agent-activity-v0.1.0-beta.9`).
+- **Not verified:** a live 0.11 daemon or client. The local `colorful-agent-activity`
+  installation stayed disabled and was not reloaded. The registry and `git:` install
+  commands follow Paseo's source reference and were not run.
+
 ## Beta.9 — manual native-row switch (2026-09-29)
 
 - Feature: two global Command Center actions switch this client between Activity tool

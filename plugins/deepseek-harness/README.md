@@ -131,7 +131,15 @@ iOS/Android clients have not been exercised. See [verification](https://github.c
 ## Paseo installation
 
 Review this trusted, unsandboxed plugin and install it on the intended daemon.
-For the published npm package, run:
+On Paseo 0.11 or later, the reviewed [registry](https://paseo.sh/plugins) entry
+`geoqiao/deepseek-harness` installs the pinned npm package:
+
+~~~sh
+paseo plugin add geoqiao/deepseek-harness --host <your-host>
+paseo plugin ls --host <your-host>
+~~~
+
+To install the published npm package directly, run:
 
 ~~~sh
 paseo plugin add paseo-deepseek-harness --host <your-host>
@@ -146,9 +154,13 @@ npm package. The `paseo-plugin.json` in the Git source retains those build steps
 To install the pinned Git prerelease instead, run:
 
 ~~~sh
-paseo plugin add geoqiao/paseo-stuff:plugins/deepseek-harness --ref deepseek-harness-v0.1.0-beta.10 --host <your-host>
+paseo plugin add git:geoqiao/paseo-stuff:plugins/deepseek-harness --ref deepseek-harness-v0.1.0-beta.10 --host <your-host>
 paseo plugin ls --host <your-host>
 ~~~
+
+Paseo 0.11 reads a bare `owner/name` source as a registry ID, so the `git:`
+prefix is required there. Paseo CLIs before 0.11 take the same Git source
+without the prefix.
 
 Select **DeepSeek Harness** when creating an agent in Paseo. Model and thinking
 choices come from the installed DSH profile. Plugins and DSH tools are trusted,
@@ -161,6 +173,8 @@ prereleases and future breaking releases; it is not a promise that untested
 versions work. Tested Paseo versions: an installed 0.8.0 daemon (historical),
 and the automated public-SDK suite against 0.9.0-beta.1, 0.9.2 and
 0.10.0-beta.1, plus a live load and a real turn on a 0.10.0-beta.1 daemon.
+The suite also passes against the 0.11.2 SDK and the plugin loads on a
+0.11.2 daemon; no real turn was run for that check.
 No live 0.9.x daemon was tested. Do not restart the daemon for this plugin. Follow Paseo's
 global plugin-enable and per-installation
 enable/disable rules; an existing disabled installation should remain
@@ -198,7 +212,7 @@ npm test
 ~~~
 
 The tests use the installed public Paseo SDK (pinned to 0.9.2; the same suite
-also passes against 0.9.0-beta.1 and 0.10.0-beta.1), public
+also passes against 0.9.0-beta.1, 0.10.0-beta.1 and 0.11.2), public
 `runAcpProvider`, ACP SDK 1.4.0 framing, and a fake ACP peer process. They cover catalog discovery,
 model and thinking options, multi-turn prompts, configuration, persistence
 resume, tool output fidelity, images, MCP, permissions, errors, cancellation,
