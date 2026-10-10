@@ -9,9 +9,14 @@
   (client, plugin, protocol) installed without saving gives the same result.
 - Paseo's registry lists the plugin as `geoqiao/agent-activity`, pinned to commit
   `abc4d96` (tag `readable-agent-activity-v0.1.0-beta.9`).
-- **Not verified:** a live 0.11 daemon or client. The local `colorful-agent-activity`
-  installation stayed disabled and was not reloaded. The registry and `git:` install
-  commands follow Paseo's source reference and were not run.
+- Install commands, run on an isolated Paseo 0.11.2 daemon (temporary home, relay
+  disabled, no client connected): `paseo plugin add geoqiao/agent-activity` installed
+  commit `abc4d96` and the `git:` command with tag `readable-agent-activity-v0.1.0-beta.9`
+  installed the same commit; both ran the preparation commands and reached `running`.
+  The old source without `git:` is rejected there as a registry ID.
+- **Not verified:** any 0.11 client, so the client bundle was compiled by the daemon
+  but not evaluated in an app. The local `colorful-agent-activity` installation stayed
+  disabled and was not reloaded.
 
 ## Beta.9 — manual native-row switch (2026-09-29)
 

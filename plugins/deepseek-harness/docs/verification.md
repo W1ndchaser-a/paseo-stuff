@@ -1,5 +1,28 @@
 # Verification and limits
 
+## Beta.11 — npm package icon (2026-10-11)
+
+- The install commands were run on an isolated Paseo 0.11.2 daemon (temporary
+  home, relay disabled, no client connected). Both npm routes for beta.10,
+  `paseo plugin add geoqiao/deepseek-harness` and
+  `paseo plugin add paseo-deepseek-harness`, failed with
+  `Invalid plugin provider icon "icon.svg": file does not exist or is not a
+  regular file`. The beta.10 tarball contains no `icon.svg`; the provider
+  registers that icon.
+- On the same daemon the `git:` command with tag
+  `deepseek-harness-v0.1.0-beta.10` ran the preparation commands and reached
+  `running`. The old source without `git:` is rejected as a registry ID.
+- Beta.11 adds `icon.svg` to the package `files` list and a test that the
+  registered icon is listed there and exists. `npm run check` on Node 24.18.0
+  with SDK 0.9.2: typecheck, lint with zero warnings/errors and
+  **75 tests / 3 files**.
+- `npm pack` produces 11 files including `icon.svg` and `OVERVIEW.md`. The
+  extracted package, with its production dependency installed, was added to
+  that daemon as a directory: it reached `running`, logged `Plugin ready` and
+  `paseo provider ls` listed DeepSeek Harness.
+- Not verified before release: installing the published beta.11 from npm or
+  through the registry, and a real turn on 0.11.2.
+
 ## Paseo 0.11.2 check (2026-10-11)
 
 - No runtime change; the released beta.10 code is unchanged. This check
@@ -14,8 +37,7 @@
 - Paseo's registry lists the plugin as `geoqiao/deepseek-harness`, pinned to
   npm `paseo-deepseek-harness@0.1.0-beta.10`.
 - Not verified: a real turn, resume or tool call on 0.11.2 for this check. The
-  registry and `git:` install commands follow Paseo's source reference and were
-  not run.
+  install commands were run afterwards; see the beta.11 section above.
 
 ## Beta.8 — minimum-only DSH version check (2026-09-29)
 
