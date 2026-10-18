@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.1.0-beta.6 — 2026-10-18
+
+- Publish on npm as `paseo-math-renderer`, so the Paseo registry can track new versions without a manual pull request. Rendering is unchanged from beta.5.
+- The package contains the generated Markdown parser and embedded resvg WASM, and an `npm-shrinkwrap.json` for MathJax and resvg. Its manifest has no build steps because npm installs the runtime dependencies; the Git manifest keeps them.
+- Move `markdown-it` to development dependencies. Only `prepare:markdown` reads it; the generated parser contains its code. `shared/markdown.ts` now takes its `Token` type from the generated parser, because Paseo also resolves type-only imports when it compiles the plugin.
+- The packed package loaded and rendered inline and block formulas on an isolated Paseo 0.12.0-beta.3 daemon, installed from npm through a local registry and from the unpacked directory, in the 0.12.0-beta.3 web client.
+
 ## 0.1.0-beta.5 — 2026-10-18
 
 - Typeset inline math. `\(...\)` and `$...$` inside paragraphs, headings, lists and quotes render as formula images on the text baseline. Tap a formula to see its LaTeX source; tap the source to switch back.

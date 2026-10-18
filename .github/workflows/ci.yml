@@ -31,6 +31,65 @@ jobs:
       - run: npm run prepare:markdown --if-present
       - run: npm run prepare:wasm --if-present
       - run: npm run check
+  npm-package:
+    # Loads the packed npm package with only its shrinkwrapped production
+    # dependencies, as an npm installation does. Development dependencies are
+    # absent, so a missing file or dependency fails the plugin compilation.
+    name: ${{ matrix.plugin }} / npm package
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - plugin: agent-activity
+            id: readable-agent-activity
+          - plugin: deepseek-harness
+            id: deepseek-harness
+          - plugin: math-renderer
+            id: math-renderer
+    defaults:
+      run:
+        working-directory: plugins/${{ matrix.plugin }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: plugins/${{ matrix.plugin }}/package-lock.json
+      - run: npm ci --ignore-scripts --legacy-peer-deps --no-audit --no-fund
+      - name: Pack and install production dependencies
+        run: |
+          pack="$RUNNER_TEMP/pack"
+          mkdir -p "$pack"
+          npm pack --pack-destination "$pack"
+          tar -xzf "$pack"/*.tgz -C "$pack"
+          git diff --exit-code
+          cd "$pack/package"
+          node -e 'if (require("./paseo-plugin.json").build) process.exit(1)'
+          npm ci --omit=dev --ignore-scripts --legacy-peer-deps --no-audit --no-fund
+      - name: Load the package in a daemon
+        env:
+          PLUGIN_ID: ${{ matrix.id }}
+        run: |
+          npm install -g --no-audit --no-fund @getpaseo/cli@0.11.4
+          home="$RUNNER_TEMP/paseo-home"
+          mkdir -p "$home"
+          echo '{"version":1,"daemon":{"listen":"127.0.0.1:6798","relay":{"enabled":false}},"pluginsEnabled":true}' > "$home/config.json"
+          paseo daemon start --home "$home" --timeout 120
+          echo y | paseo plugin add "$RUNNER_TEMP/pack/package" --home "$home"
+          paseo plugin ls --home "$home"
+          paseo plugin ls --home "$home" --json | node -e '
+            const plugins = JSON.parse(require("fs").readFileSync(0, "utf8"));
+            const plugin = plugins.find(entry => entry.id === process.env.PLUGIN_ID);
+            if (plugin?.status !== "running") throw new Error(`${process.env.PLUGIN_ID} is ${plugin?.status}`);
+          '
+      - name: Daemon log
+        if: always()
+        run: cat "$RUNNER_TEMP/paseo-home/daemon.log" || true
   deepseek-harness-windows:
     # Runs the real npm dsh.cmd launcher through a Paseo daemon. No API key is
     # needed: the provider status and model catalog work without one.

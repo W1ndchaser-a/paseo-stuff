@@ -2,7 +2,7 @@
 
 **Formatted, highlighted tool-call JSON. Twenty-line previews. Recognizable tool icons.**
 
-**Version 0.1.0-beta.9** · [Release notes](CHANGELOG.md) · Paseo 0.8 or later, checked through SDK 0.11.2. Tool cards need Full detail;
+**Version 0.1.0-beta.11** · [Release notes](CHANGELOG.md) · Paseo 0.8 or later, checked through SDK 0.11.4. Tool cards need Full detail;
 a Command Center action switches to native tool rows for Summary.
 
 ## What it does
@@ -128,10 +128,21 @@ stays `readable-agent-activity`:
 paseo plugin add geoqiao/agent-activity --host <your-host>
 ```
 
+To install the published npm package directly:
+
+```sh
+paseo plugin add npm:paseo-readable-agent-activity@0.1.0-beta.11 --host <your-host>
+```
+
+Paseo installs the package's two runtime dependencies, `prism-react-renderer` and
+`@getpaseo/protocol`, from its `npm-shrinkwrap.json`; both are compiled into the
+client bundle. The package's manifest has no build steps. The `paseo-plugin.json` in
+the Git source keeps them: they install the development dependencies and run the checks.
+
 To install the pinned prerelease directly from Git instead:
 
 ```sh
-paseo plugin add git:geoqiao/paseo-stuff:plugins/agent-activity --ref readable-agent-activity-v0.1.0-beta.10 --host <your-host>
+paseo plugin add git:geoqiao/paseo-stuff:plugins/agent-activity --ref readable-agent-activity-v0.1.0-beta.11 --host <your-host>
 ```
 
 Paseo 0.11 reads a bare `owner/name` source as a registry ID, so the `git:` prefix is
@@ -164,5 +175,5 @@ Original copyright retained: [LICENSE](LICENSE), [provenance](UPSTREAM.md).
 Vendored Paseo test fixtures retain their separate Apache-2.0 license.
 
 The three comparison images show beta.6. Earlier screenshots remain in historical release tags.
-GitHub-only publication; no npm release.
+Published on npm as `paseo-readable-agent-activity` from 0.1.0-beta.11.
 [paseo.cafe submission and migration status](docs/catalog.md).

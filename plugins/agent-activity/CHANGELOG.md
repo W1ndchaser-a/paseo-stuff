@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.1.0-beta.11 — 2026-10-18
+
+- Publish on npm as `paseo-readable-agent-activity`, so the Paseo registry can track new versions without a manual pull request. The plugin ID stays `readable-agent-activity`; behavior is unchanged from beta.10.
+- Move `prism-react-renderer` and `@getpaseo/protocol` to runtime dependencies. The client bundle compiles code from both, and an npm installation omits development dependencies. The package ships an `npm-shrinkwrap.json` for them, and its manifest has no build steps; the Git manifest keeps them.
+- The packed package loaded on an isolated Paseo 0.12.0-beta.3 daemon, installed from npm through a local registry and from the unpacked directory. In the 0.12.0-beta.3 web client, DeepSeek Harness tool calls showed cards with the main argument on the collapsed header.
+
 ## 0.1.0-beta.10 — 2026-10-18
 
 - Show the call's main argument after the tool name on the collapsed card header: the shell command, file path, search query or URL from the native tool detail, or the first of `command`, `cmd`, `file_path`, `filePath`, `path`, `pattern`, `query` and `url` in an unknown tool's input. It is one literal value, never a generated summary: the first line of a 200-character prefix, with `…` when anything was left out. It uses the muted monospace style and shrinks before the tool name.

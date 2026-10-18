@@ -1,8 +1,11 @@
 // Self-contained UMD parser lowered at build time for Hermes string evaluation.
 // Also avoids legacy package resolution in the host's neutral esbuild target.
 import MarkdownIt from "./generated/markdown.js";
-import type Token from "markdown-it/lib/token.mjs";
 import { MAX_FORMULAS, MAX_TEXT } from "./contracts";
+
+// Derived from the generated parser: Paseo resolves type imports when it compiles the
+// plugin, and npm installs only the runtime dependencies, which exclude markdown-it.
+type Token = ReturnType<MarkdownIt["parse"]>[number];
 
 export type Inline =
   | { kind: "text" | "code"; text: string }

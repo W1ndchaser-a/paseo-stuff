@@ -4,10 +4,10 @@ Render **block and inline LaTeX inside assistant reply bodies**. Block formulas 
 muted English action row: **Show LaTeX** and **Copy LaTeX**. Inline formulas sit in the
 text; tap one to see its source. No extra panel or duplicate message toolbar.
 
-> **Experimental beta — 0.1.0-beta.5.** Requires Paseo app and daemon
+> **Experimental beta — 0.1.0-beta.6.** Requires Paseo app and daemon
 > **0.9.0-beta.1 or newer**. Checked offline against Paseo 0.9.2 and 0.10.0-beta.1; the
 > checks also pass with the 0.11.4 SDK. Beta.5 was tested live on a 0.12.0-beta.2 daemon
-> in the hosted web client. Replies stay native while streaming; supported formulas
+> in the hosted web client; the beta.6 npm package was loaded on a 0.12.0-beta.3 daemon. Replies stay native while streaming; supported formulas
 > render after completion. Native iOS/Android acceptance and complete native Markdown
 > parity are not finished. Read the limitations before enabling this trusted plugin.
 
@@ -27,10 +27,22 @@ paseo plugin add geoqiao/math-renderer --host <host:port>
 paseo --host <host:port> plugin ls
 ```
 
+To install the published npm package directly:
+
+```sh
+paseo plugin add npm:paseo-math-renderer@0.1.0-beta.6 --host <host:port>
+```
+
+Paseo installs the package's runtime dependencies (MathJax and resvg) from its
+`npm-shrinkwrap.json`. The package already contains the generated Markdown parser and
+embedded WASM, so its manifest has no build steps. The `paseo-plugin.json` in the Git
+source keeps them: they install the development dependencies, generate those files and
+typecheck.
+
 To install the pinned prerelease directly from Git instead:
 
 ```sh
-paseo plugin add git:geoqiao/paseo-stuff:plugins/math-renderer --ref math-renderer-v0.1.0-beta.5 --host <host:port>
+paseo plugin add git:geoqiao/paseo-stuff:plugins/math-renderer --ref math-renderer-v0.1.0-beta.6 --host <host:port>
 ```
 
 Paseo 0.11 reads a bare `owner/name` source as a registry ID, so the `git:` prefix is
@@ -41,7 +53,7 @@ it does not import any sibling plugin or depend on root-installed packages.
 For local development, run the checks below, then install this directory or reload
 the existing runtime ID.
 
-Beta.5 adds inline math. Beta.4 removes the `<0.10.0` upper bound so Paseo 0.10 prereleases can load the plugin,
+Beta.6 is published on npm. Beta.5 adds inline math. Beta.4 removes the `<0.10.0` upper bound so Paseo 0.10 prereleases can load the plugin,
 and tests against Paseo 0.9.2 host sources. Beta.3 added 0.9 whole-message handling,
 host external-link opening and a native-reply mode for chat Find. Beta.2 fixed mobile
 bundle loading and added bold Greek symbols.
@@ -159,7 +171,8 @@ npm run check
 `prepare:markdown` lowers the pinned Markdown parser to function-based JavaScript
 and wraps it as ESM in ignored `shared/generated/` for Hermes compatibility.
 `prepare:wasm` embeds the unmodified npm resvg WASM artifact into ignored
-`server/generated/wasm.ts`. The manifest runs both build steps during installation.
+`server/generated/wasm.ts`. The Git manifest runs both build steps during installation;
+`npm pack` runs them too and ships the generated files in the npm package.
 Do not commit generated files, dependencies or compiled bundles.
 
 Typecheck before reloading the exact installed ID on the intended host. Do not restart

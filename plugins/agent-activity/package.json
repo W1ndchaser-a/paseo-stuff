@@ -1,7 +1,7 @@
 {
-  "name": "readable-agent-activity",
-  "version": "0.1.0-beta.10",
-  "description": "Formatted and highlighted tool-call JSON, twenty-line previews and tool icons for Paseo 0.8 to 0.10.0-beta.1. Full detail only.",
+  "name": "paseo-readable-agent-activity",
+  "version": "0.1.0-beta.11",
+  "description": "Formatted and highlighted tool-call JSON, twenty-line previews, tool icons and the main argument on collapsed cards, for Paseo 0.8 or later. Tool cards need Full detail.",
   "repository": {
     "type": "git",
     "url": "https://github.com/geoqiao/paseo-stuff.git",
@@ -18,19 +18,41 @@
     "json",
     "readability"
   ],
+  "files": [
+    "paseo-plugin.json",
+    "OVERVIEW.md",
+    "index.client.tsx",
+    "client/activity.tsx",
+    "client/highlight.ts",
+    "client/transform.ts",
+    "shared/details.ts",
+    "shared/presentation.ts",
+    "shared/timeline.ts",
+    "README.md",
+    "LICENSE",
+    "CHANGELOG.md",
+    "UPSTREAM.md",
+    "images/",
+    "package.json",
+    "npm-shrinkwrap.json"
+  ],
   "license": "MIT",
-  "private": true,
   "type": "module",
   "scripts": {
     "lint": "oxlint",
     "typecheck": "tsc --noEmit",
     "test": "vitest run --maxWorkers=2",
-    "check": "npm run typecheck && npm run lint && npm test"
+    "check": "npm run typecheck && npm run lint && npm test",
+    "prepack": "node scripts/pack-manifest.mjs prepare",
+    "postpack": "node scripts/pack-manifest.mjs restore"
+  },
+  "dependencies": {
+    "@getpaseo/protocol": "0.9.2",
+    "prism-react-renderer": "2.4.1"
   },
   "devDependencies": {
     "@getpaseo/client": "0.9.2",
     "@getpaseo/plugin": "0.9.2",
-    "@getpaseo/protocol": "0.9.2",
     "@tanstack/react-query": "^5.90.11",
     "@types/node": "^20.9.0",
     "@types/react": "~19.2.0",
@@ -39,7 +61,6 @@
     "lucide-react": "0.546.0",
     "markdown-it": "14.3.2",
     "oxlint": "1.61.0",
-    "prism-react-renderer": "2.4.1",
     "react": "19.1.0",
     "react-native": "0.81.5",
     "react-test-renderer": "19.1.0",

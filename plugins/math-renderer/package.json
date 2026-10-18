@@ -1,7 +1,6 @@
 {
   "name": "paseo-math-renderer",
-  "version": "0.1.0-beta.5",
-  "private": true,
+  "version": "0.1.0-beta.6",
   "type": "module",
   "description": "Render block and inline LaTeX in completed Paseo replies, with source viewing, copying and native-reply mode. Experimental beta for Paseo 0.9.0-beta.1 or newer.",
   "license": "MIT",
@@ -15,17 +14,46 @@
   "bugs": {
     "url": "https://github.com/geoqiao/paseo-stuff/issues"
   },
+  "keywords": [
+    "paseo",
+    "paseo-plugin",
+    "math",
+    "latex",
+    "mathjax"
+  ],
+  "files": [
+    "paseo-plugin.json",
+    "OVERVIEW.md",
+    "index.client.tsx",
+    "index.server.ts",
+    "client/message.tsx",
+    "client/transform.ts",
+    "server/render.ts",
+    "server/generated/wasm.ts",
+    "shared/contracts.ts",
+    "shared/markdown.ts",
+    "shared/generated/markdown.js",
+    "README.md",
+    "LICENSE",
+    "CHANGELOG.md",
+    "THIRD_PARTY.md",
+    "third-party/",
+    "images/",
+    "package.json",
+    "npm-shrinkwrap.json"
+  ],
   "scripts": {
     "prepare:markdown": "node server/prepare-markdown.mjs",
     "prepare:wasm": "node server/prepare-wasm.mjs",
     "typecheck": "tsc --noEmit",
     "lint": "oxlint --ignore-pattern server/generated --ignore-pattern shared/generated --ignore-pattern tests/fixtures",
     "test": "vitest run --maxWorkers=2",
-    "check": "npm run typecheck && npm run lint && npm test"
+    "check": "npm run typecheck && npm run lint && npm test",
+    "prepack": "npm run prepare:markdown && npm run prepare:wasm && node scripts/pack-manifest.mjs prepare",
+    "postpack": "node scripts/pack-manifest.mjs restore"
   },
   "dependencies": {
     "@resvg/resvg-wasm": "2.6.2",
-    "markdown-it": "14.3.2",
     "mathjax-full": "3.2.2"
   },
   "overrides": {
@@ -40,6 +68,7 @@
     "@types/node": "^22.0.0",
     "@types/react": "~19.2.0",
     "esbuild": "0.28.1",
+    "markdown-it": "14.3.2",
     "oxlint": "1.61.0",
     "react": "19.1.0",
     "react-native": "0.81.5",

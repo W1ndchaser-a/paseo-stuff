@@ -14,7 +14,7 @@ shared runtime or root-hoisted dependency tree.
 | MaKa | [plugins/maka](plugins/maka) | **Unmaintained since 2026-09-24.** Experimental provider for the official MaKa ACP CLI, last tested with MaKa dev39; newer MaKa releases are not tracked. Its `<0.10.0` range makes Paseo 0.10 reject it. |
 | Paseo Pet | [plugins/paseo-pet](plugins/paseo-pet) | **Paused (unmaintained) since 2026-09-28.** Experimental sidebar companion for user-supplied Codex pet packs; native mobile acceptance is not complete. No character assets included. |
 
-Activity **0.1.0-beta.10** and Math Renderer **0.1.0-beta.5** declare minimum-only
+Activity **0.1.0-beta.11** and Math Renderer **0.1.0-beta.6** declare minimum-only
 Paseo requirements and are checked against the Paseo **0.9.2** SDK and host pipeline
 source, and their checks also pass with the **0.11.4** SDK.
 DeepSeek Harness **0.1.0-beta.13** requires Paseo **0.11.0** and is checked against
@@ -37,10 +37,18 @@ example Math Renderer:
 paseo plugin add geoqiao/math-renderer --host <host:port>
 ```
 
+Math Renderer, Readable Agent Activity and DeepSeek Harness are also published on npm
+as `paseo-math-renderer`, `paseo-readable-agent-activity` and
+`paseo-deepseek-harness`. To install a package directly:
+
+```sh
+paseo plugin add npm:paseo-math-renderer@0.1.0-beta.6 --host <host:port>
+```
+
 To install a pinned tag directly from this repository instead:
 
 ```sh
-paseo plugin add git:geoqiao/paseo-stuff:plugins/math-renderer --ref math-renderer-v0.1.0-beta.4 --host <host:port>
+paseo plugin add git:geoqiao/paseo-stuff:plugins/math-renderer --ref math-renderer-v0.1.0-beta.6 --host <host:port>
 ```
 
 The `:plugins/<directory>` suffix selects one plugin, not the whole repository.
@@ -79,15 +87,26 @@ See [AGENTS.md](AGENTS.md) for repository development rules.
 Each plugin maintains its own `package.json.version`. Git tags use
 `<plugin-id>-v<version>` so releases remain independent in the monorepo.
 
-Publishing a GitHub release for an npm-distributed plugin (currently DeepSeek
-Harness) runs [`publish-npm.yml`](.github/workflows/publish-npm.yml), which
+Publishing a GitHub release for an npm-distributed plugin (DeepSeek Harness,
+Math Renderer and Readable Agent Activity) runs [`publish-npm.yml`](.github/workflows/publish-npm.yml), which
 checks the tag against `package.json`, runs the plugin checks and publishes
 with [npm trusted publishing](https://docs.npmjs.com/trusted-publishers). No
 npm token or OTP is involved, and npm attaches provenance. To publish an
 existing tag again, run the workflow manually with that tag; versions already
-on npm are skipped. A new npm package must first trust the workflow once with
+on npm are skipped.
+
+`npm trust` works only for a package that already exists, so a new package starts
+differently. Add its tag prefix to the workflow's plugin list. The repository owner
+then publishes the first version manually from a checked tarball and runs
 `npm trust github <package> --file publish-npm.yml --repo geoqiao/paseo-stuff --allow-publish`
-and be added to the workflow's plugin list.
+once. Later versions go through the workflow. The manually published version has no
+npm provenance.
+
+Each npm package removes the Git-only `build` steps from its packed manifest and
+ships an `npm-shrinkwrap.json` for its production dependencies. Paseo installs those
+dependencies and runs no package scripts. Math Renderer's package also includes its
+generated Markdown parser and embedded WASM. CI packs each npm plugin, installs only
+the production dependencies and loads the result in a Paseo daemon.
 
 Paseo's [plugin registry](https://github.com/getpaseo/plugins) (browsable at
 [paseo.sh/plugins](https://paseo.sh/plugins)) imported the four Cafe entries on
@@ -95,14 +114,16 @@ Paseo's [plugin registry](https://github.com/getpaseo/plugins) (browsable at
 
 | Registry ID | Plugin directory | Pinned artifact |
 | --- | --- | --- |
-| `geoqiao/agent-activity` | `plugins/agent-activity` | Git commit `abc4d96` (0.1.0-beta.9) |
+| `geoqiao/agent-activity` | `plugins/agent-activity` | Git commit `5d8725c` (0.1.0-beta.9) |
 | `geoqiao/deepseek-harness` | `plugins/deepseek-harness` | npm `paseo-deepseek-harness`; the version follows the registry's bump PRs |
-| `geoqiao/math-renderer` | `plugins/math-renderer` | Git commit `abc4d96` (0.1.0-beta.4) |
+| `geoqiao/math-renderer` | `plugins/math-renderer` | Git commit `5d8725c` (0.1.0-beta.4) |
 | `geoqiao/maka` | `plugins/maka` | Git commit `abc4d96` (0.1.0-beta.4, unmaintained) |
 
 The registry opens a bump PR by itself for a new npm version. A Git record changes
 only after a new submission or a PR against that record, so a release of a
-Git-distributed plugin needs that step. Each maintained plugin keeps an
+Git-distributed plugin needs that step. Math Renderer and Readable Agent Activity
+are published on npm from 0.1.0-beta.6 and 0.1.0-beta.11, but their records stay Git
+records until a PR against each record switches it to the npm package. Each maintained plugin keeps an
 `OVERVIEW.md` beside its manifest; the registry shows it on the listing page once a
 record pins a commit or package that contains it, replacing the overview the
 registry wrote during the import.

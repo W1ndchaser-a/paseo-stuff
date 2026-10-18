@@ -1,5 +1,32 @@
 # Verification and remaining gaps
 
+## Beta.11 — npm package (2026-10-18)
+
+- `npm run check` on Node **24.18.0** with the pinned SDK **0.9.2**: typecheck, lint
+  with no warnings/errors, **8 files / 275 tests**. The same tree with SDK **0.11.4**
+  (client, plugin, protocol) installed without saving gives the same result.
+- `npm pack` produced the package; `postpack` restored the source manifests. The
+  packed `paseo-plugin.json` has no `build`, and `npm-shrinkwrap.json` contains only
+  `prism-react-renderer`, `@getpaseo/protocol` and their dependencies.
+- Isolated Paseo **0.12.0-beta.3** daemon (temporary home, port 6801). Its npm used a
+  local Verdaccio registry holding the tarball; other packages were proxied from npmjs.
+  Verdaccio omits the `_hasShrinkwrap` flag that npmjs sets on packages with a
+  shrinkwrap, so the test set that flag in Verdaccio's storage to match npmjs.
+  - `paseo plugin add npm:paseo-readable-agent-activity@0.1.0-beta.11` installed the package: status `running`, no error.
+    npm placed the dependencies under the package's own `node_modules` at the
+    shrinkwrapped versions. Without the flag, npm ignored the shrinkwrap and resolved
+    newer versions.
+  - The unpacked tarball, after `npm ci --omit=dev --ignore-scripts`, installed as a
+    directory: status `running`, no error.
+  - A `.tgz` path, `npm:<path>` and `npm:file:<path>` are rejected as sources, as
+    the Paseo source reference states.
+- In the **0.12.0-beta.3** web client (`app-dist` served locally) on that daemon, a
+  DeepSeek Harness turn ran `ls -la` and read `notes.txt`. The collapsed cards showed
+  `bash ls -la` and `read notes.txt`; expanding `bash` showed the highlighted JSON
+  Input and the real Output. The browser console showed no plugin errors or warnings.
+- **Not verified:** installation from the public npm registry (the package is not
+  published yet), the desktop app, native iOS/Android and Summary.
+
 ## Beta.10 — header argument (2026-10-18)
 
 - `npm run check` on Node **24.18.0** with the pinned SDK **0.9.2**: typecheck, lint

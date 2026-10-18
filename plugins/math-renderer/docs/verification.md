@@ -1,5 +1,38 @@
 # Verification scope
 
+## Beta.6 — npm package (2026-10-18)
+
+- `npm run check` passed on Node **24.18.0** with the pinned **0.9.2** packages:
+  typecheck, zero lint warnings/errors and **6 files / 82 tests**. An isolated copy with
+  the **0.11.4** client, plugin and protocol packages installed without saving passed
+  the same check.
+- `npm pack` produced the package; `postpack` restored the source manifests. The
+  packed `paseo-plugin.json` has no `build`, and `npm-shrinkwrap.json` contains only
+  MathJax, resvg and their dependencies, with `@xmldom/xmldom` at the overridden 0.9.12.
+- Isolated Paseo **0.12.0-beta.3** daemon (temporary home, port 6801). Its npm used a
+  local Verdaccio registry holding the tarball; other packages were proxied from npmjs.
+  Verdaccio omits the `_hasShrinkwrap` flag that npmjs sets on packages with a
+  shrinkwrap, so the test set that flag in Verdaccio's storage to match npmjs.
+  - `paseo plugin add npm:paseo-math-renderer@0.1.0-beta.6` installed the package: status `running`, no error.
+    npm placed the dependencies under the package's own `node_modules` at the
+    shrinkwrapped versions. Without the flag, npm ignored the shrinkwrap and resolved
+    newer versions.
+  - The unpacked tarball, after `npm ci --omit=dev --ignore-scripts`, installed as a
+    directory: status `running`, no error.
+  - A `.tgz` path, `npm:<path>` and `npm:file:<path>` are rejected as sources, as
+    the Paseo source reference states.
+- The first npm installation failed: Paseo's compiler also resolves type-only imports,
+  and `import type Token from "markdown-it/lib/token.mjs"` had no `markdown-it` after
+  it moved to development dependencies. `shared/markdown.ts` now derives `Token` from
+  the generated parser.
+- In the **0.12.0-beta.3** web client (`app-dist` served locally) on that daemon, a
+  DeepSeek Harness reply rendered `$\bar{x} = \frac{1}{n}\sum_{i=1}^n x_i,
+  `\(e^{i\pi}+1=0\)`, `$ax^2+bx+c=0 and `$\Delta = b^2-4ac \ge 0 inline, and the
+  `$` integral as a block with **Show LaTeX** and **Copy LaTeX**. `$5 and $10` stayed
+  text. The browser console showed no plugin errors or warnings.
+- **Not verified:** installation from the public npm registry (the package is not
+  published yet), the desktop app and native iOS/Android.
+
 ## Beta.5 — inline math (2026-10-18)
 
 - `npm run check` passed on Node **24.18.0** with the pinned **0.9.2** packages:

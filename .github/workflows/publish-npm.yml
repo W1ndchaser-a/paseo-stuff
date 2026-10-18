@@ -1,7 +1,9 @@
 # Publishes a plugin to npm when its GitHub release is published.
 # Authentication uses npm trusted publishing (OIDC): no npm token or OTP.
-# Each npm package must trust this workflow once:
+# npm trust needs an existing package, so the repository owner publishes a new
+# package's first version manually. The package then trusts this workflow once:
 #   npm trust github <package> --file publish-npm.yml --repo geoqiao/paseo-stuff --allow-publish
+# Later versions are published only by this workflow.
 name: Publish to npm
 on:
   release:
@@ -9,7 +11,7 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: Release tag to publish, e.g. deepseek-harness-v0.1.0-beta.10
+        description: Release tag to publish, e.g. math-renderer-v0.1.0-beta.6
         required: true
 permissions:
   contents: read
@@ -31,6 +33,8 @@ jobs:
           # Only plugins published to npm are listed here.
           case "$TAG" in
             deepseek-harness-v*) dir=deepseek-harness; version="${TAG#deepseek-harness-v}" ;;
+            math-renderer-v*) dir=math-renderer; version="${TAG#math-renderer-v}" ;;
+            readable-agent-activity-v*) dir=agent-activity; version="${TAG#readable-agent-activity-v}" ;;
             *) echo "::notice::$TAG is not an npm-published plugin; skipping."; exit 0 ;;
           esac
           echo "dir=plugins/$dir" >> "$GITHUB_OUTPUT"
@@ -66,7 +70,10 @@ jobs:
           fi
       - if: steps.check.outputs.publish
         working-directory: ${{ steps.plugin.outputs.dir }}
-        run: npm ci --ignore-scripts --legacy-peer-deps --no-audit --no-fund
+        run: |
+          npm ci --ignore-scripts --legacy-peer-deps --no-audit --no-fund
+          npm run prepare:markdown --if-present
+          npm run prepare:wasm --if-present
       - if: steps.check.outputs.publish
         working-directory: ${{ steps.plugin.outputs.dir }}
         run: npm run check
