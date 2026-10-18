@@ -14,9 +14,9 @@ shared runtime or root-hoisted dependency tree.
 | MaKa | [plugins/maka](plugins/maka) | **Unmaintained since 2026-09-24.** Experimental provider for the official MaKa ACP CLI, last tested with MaKa dev39; newer MaKa releases are not tracked. Its `<0.10.0` range makes Paseo 0.10 reject it. |
 | Paseo Pet | [plugins/paseo-pet](plugins/paseo-pet) | **Paused (unmaintained) since 2026-09-28.** Experimental sidebar companion for user-supplied Codex pet packs; native mobile acceptance is not complete. No character assets included. |
 
-Activity **0.1.0-beta.9** and Math Renderer **0.1.0-beta.4** declare minimum-only
-Paseo requirements and are checked against the Paseo **0.9.2** and **0.10.0-beta.1**
-SDKs and host pipeline source, and their checks also pass with the **0.11.2** SDK.
+Activity **0.1.0-beta.10** and Math Renderer **0.1.0-beta.5** declare minimum-only
+Paseo requirements and are checked against the Paseo **0.9.2** SDK and host pipeline
+source, and their checks also pass with the **0.11.4** SDK.
 DeepSeek Harness **0.1.0-beta.13** requires Paseo **0.11.0** and is checked against
 the **0.11.4** SDK. A minimum is not
 a promise about later releases; each plugin's verification record lists what was

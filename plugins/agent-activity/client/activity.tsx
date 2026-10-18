@@ -3,6 +3,7 @@ import { Icon, ScrollView } from "@getpaseo/plugin/client/react-native";
 import { Fragment, useMemo, useState, type ReactNode } from "react";
 import { ActivityIndicator, Platform, Pressable, Text, View, useWindowDimensions, type TextStyle, type ViewStyle } from "react-native";
 import { detailSections, presentValue, previewText, PREVIEW_LINES } from "../shared/details";
+import { toolArgument } from "../shared/presentation";
 import type { ReasoningItemData, ToolCallItemData } from "../shared/timeline";
 import { useSyntaxTokens } from "./highlight";
 
@@ -22,6 +23,9 @@ function useStyles(theme: Theme, layout: Layout) {
         paddingVertical: 0, borderRadius: 4 } satisfies ViewStyle,
       title: { color: colors.foreground, fontSize: 14,
         flexShrink: 1, minWidth: 0 } satisfies TextStyle,
+      // The argument gives way first, so a long command never hides the tool name.
+      argument: { color: colors.foregroundMuted, fontFamily: "monospace", fontSize: 12,
+        flex: 1, flexShrink: 100, minWidth: 0 } satisfies TextStyle,
       body: { marginLeft: 20, paddingTop: 4, paddingBottom: 8, gap: 12, minWidth: 0 } satisfies ViewStyle,
       section: { gap: 5, minWidth: 0 } satisfies ViewStyle,
       label: { color: colors.foregroundMuted, fontSize: 11, lineHeight: 18 } satisfies TextStyle,
@@ -119,12 +123,13 @@ export function ToolActivity({ item, theme, layout }: PluginTimelineItemProps<To
   const [expanded, setExpanded] = useState(false);
   const [all, setAll] = useState(false);
   const data = item.data;
+  const argument = useMemo(() => toolArgument(data.detail), [data.detail]);
   return <View style={styles.row}>
     <Button label={(expanded ? "Collapse " : "Expand ") + data.name} expanded={expanded}
       onPress={() => setExpanded(value => !value)} theme={theme} style={styles.header}>
       <Icon name={data.presentation.icon} size={12} color={theme.colors.foregroundMuted} />
       <Text numberOfLines={1} style={styles.title}>{data.name}</Text>
-      <View style={{ flex: 1 }} />
+      {argument ? <Text numberOfLines={1} style={styles.argument}>{argument}</Text> : <View style={{ flex: 1 }} />}
       {data.status === "running" ? <ActivityIndicator accessibilityLabel="Running"
         color={theme.colors.foregroundMuted} size="small"
         style={{ width: 14, height: 14, transform: [{ scale: 0.65 }] }} />

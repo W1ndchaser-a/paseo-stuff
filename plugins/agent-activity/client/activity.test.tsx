@@ -323,4 +323,12 @@ describe.each([
     await act(async () => renderer.update(<ToolActivity {...props(data(undefined, '{"stream":true}', "completed"))} />));
     expect(vi.mocked(useSyntaxTokens).mock.calls.at(-1)?.[1]).toBe("json");
   });
+  it("shows the call's main argument on the collapsed header, on one line", async () => {
+    const renderer = await mount(<ToolActivity {...props(data({ path: "src/a.ts\nsecond" }, "x"))} />);
+    const header = renderer.root.findByProps({ accessibilityLabel: "Expand tool" });
+    expect(header.findAll(node => String(node.type) === "Text").map(text)).toEqual(["tool", "src/a.ts…"]);
+    expect(header.findAll(node => String(node.type) === "Text").every(node => node.props.numberOfLines === 1)).toBe(true);
+    await act(async () => renderer.update(<ToolActivity {...props(data({ limit: 2 }, "x"))} />));
+    expect(header.findAll(node => String(node.type) === "Text").map(text)).toEqual(["tool"]);
+  });
 });

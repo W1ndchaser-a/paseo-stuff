@@ -13,6 +13,9 @@ a Command Center action switches to native tool rows for Summary.
 - Preview at most **20 displayed lines per section**, including automatic wrapping. One **Show all / Show less**
   control expands or collapses both sections. No Raw/Copy toolbar or extra explanations.
 - Keep tool-specific icons and the host's running/failed/canceled status.
+- Show the call's own main argument after the tool name on the collapsed header,
+  such as the shell command or file path: one literal value, first line only, in
+  muted monospace. It gives way before the tool name on narrow layouts.
 - Keep expansion manual through streaming and theme updates. Text is selectable
   with real newline characters for normal device copying.
 
@@ -128,7 +131,7 @@ paseo plugin add geoqiao/agent-activity --host <your-host>
 To install the pinned prerelease directly from Git instead:
 
 ```sh
-paseo plugin add git:geoqiao/paseo-stuff:plugins/agent-activity --ref readable-agent-activity-v0.1.0-beta.9 --host <your-host>
+paseo plugin add git:geoqiao/paseo-stuff:plugins/agent-activity --ref readable-agent-activity-v0.1.0-beta.10 --host <your-host>
 ```
 
 Paseo 0.11 reads a bare `owner/name` source as a registry ID, so the `git:` prefix is

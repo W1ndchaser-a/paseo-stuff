@@ -1,6 +1,6 @@
 import * as icons from "lucide-react";
 import { describe, expect, it } from "vitest";
-import { PASEO_TOOL_ICONS, toolIcon } from "./presentation";
+import { PASEO_TOOL_ICONS, toolArgument, toolIcon } from "./presentation";
 
 describe("tool logos without semantic summaries", () => {
   it.each([
@@ -25,5 +25,34 @@ describe("tool logos without semantic summaries", () => {
     expect(toolIcon("custom", { type: "future" })).toBe("Wrench");
     const detail = { type: "unknown", get input() { throw new Error("must not inspect arguments"); } };
     expect(toolIcon("exec", detail)).toBe("Code");
+  });
+});
+
+describe("header argument", () => {
+  it.each([
+    [{ type: "shell", command: "npm test", output: "ok" }, "npm test"],
+    [{ type: "read", filePath: "a/b.ts", content: "x" }, "a/b.ts"],
+    [{ type: "edit", filePath: "a/b.ts" }, "a/b.ts"],
+    [{ type: "search", query: "TODO" }, "TODO"],
+    [{ type: "fetch", url: "https://example.com" }, "https://example.com"],
+    [{ type: "unknown", input: { limit: 2, path: "src" }, output: null }, "src"],
+    [{ type: "unknown", input: { cmd: "ls", path: "src" }, output: null }, "ls"],
+  ])("shows the literal main argument of %j", (detail, argument) => {
+    expect(toolArgument(detail)).toBe(argument);
+  });
+  it.each([
+    [null], ["text"], [[]], [{ type: "plan", text: "x" }], [{ type: "future", command: "x" }],
+    [{ type: "unknown", input: "code", output: null }], [{ type: "unknown", input: { code: "x" } }],
+    [{ type: "unknown", input: { path: 1 } }], [{ type: "unknown", input: [{ path: "x" }] }],
+    [{ type: "shell", command: " \n " }], [{ type: "shell" }], [{ type: "unknown", input: { __proto__: null } }],
+  ])("shows nothing for %j", detail => {
+    expect(toolArgument(detail)).toBeUndefined();
+  });
+  it("keeps the first line of a bounded prefix and marks what it left out", () => {
+    expect(toolArgument({ type: "shell", command: "  cd /tmp &&\nrm x" })).toBe("cd /tmp &&…");
+    expect(toolArgument({ type: "shell", command: "a\r\nb" })).toBe("a…");
+    const long = toolArgument({ type: "shell", command: "x".repeat(1_000_000) })!;
+    expect(long).toBe("x".repeat(200) + "…");
+    expect(toolArgument({ type: "shell", command: "x".repeat(200) })).toBe("x".repeat(200));
   });
 });

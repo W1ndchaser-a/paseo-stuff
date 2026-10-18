@@ -1,6 +1,6 @@
 {
   "name": "readable-agent-activity",
-  "version": "0.1.0-beta.9",
+  "version": "0.1.0-beta.10",
   "description": "Formatted and highlighted tool-call JSON, twenty-line previews and tool icons for Paseo 0.8 to 0.10.0-beta.1. Full detail only.",
   "repository": {
     "type": "git",

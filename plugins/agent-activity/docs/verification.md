@@ -1,5 +1,23 @@
 # Verification and remaining gaps
 
+## Beta.10 — header argument (2026-10-18)
+
+- `npm run check` on Node **24.18.0** with the pinned SDK **0.9.2**: typecheck, lint
+  with no warnings/errors, **8 files / 275 tests**. The same tree with SDK **0.11.4**
+  (client, plugin, protocol) installed without saving gives the same result.
+- **Live 0.12.0-beta.2 check:** the branch checkout was installed as a directory on an
+  isolated daemon (temporary home, port 6799) next to `paseo-deepseek-harness@0.1.0-beta.12`
+  from npm. Client: hosted web app (app.paseo.sh) in a fresh Chromium profile, paired
+  through the relay. A real DeepSeek Harness turn ran `ls -la src`, read `src/a.ts` and
+  searched `src`. The collapsed cards showed `bash ls -la src`, `read <absolute path>`
+  and `grep <absolute path>`; expanding `bash` showed the JSON Input and the real
+  Output. At 390×844 dark, a running two-line command showed only its first line,
+  cut with `…`, next to the running indicator, and kept the tool name visible after
+  completion. Reloading the plugin from `main` removed the arguments from the same
+  history; reloading the branch restored them.
+- **Not verified:** the Paseo desktop app, native iOS/Android, Summary and a 0.11.x
+  daemon.
+
 ## Paseo 0.11.2 check (2026-10-11)
 
 - No runtime change; the released beta.9 code is unchanged. This check accompanies the

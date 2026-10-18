@@ -106,3 +106,36 @@ export function toolIcon(toolName: string, detail?: unknown): string {
   if (typeof type === "string" && type !== "unknown") return lookup(DETAIL_ICONS, type) ?? icon ?? "Wrench";
   return icon ?? (/(?:^|__)mcp(?:__|$)/.test(normalized) ? "Plug" : "Wrench");
 }
+
+const DETAIL_ARGUMENTS: Readonly<Record<string, string>> = {
+  shell: "command", read: "filePath", write: "filePath", edit: "filePath",
+  search: "query", fetch: "url", sub_agent: "description", worktree_setup: "branchName",
+};
+const INPUT_ARGUMENTS = ["command", "cmd", "file_path", "filePath", "path", "pattern", "query", "url"];
+const ARGUMENT_CHARS = 200;
+
+/** The call's own main argument for the collapsed header: one literal value, first
+ * line only, from a bounded prefix. Never a generated or combined summary. */
+export function toolArgument(detail: unknown): string | undefined {
+  if (detail === null || typeof detail !== "object" || Array.isArray(detail)) return undefined;
+  const fields = detail as Record<string, unknown>;
+  const type = typeof fields.type === "string" ? fields.type : "";
+  let value: unknown;
+  if (type === "unknown") {
+    const input = fields.input;
+    if (input !== null && typeof input === "object" && !Array.isArray(input)) {
+      const key = INPUT_ARGUMENTS.find(name => Object.hasOwn(input, name)
+        && typeof (input as Record<string, unknown>)[name] === "string");
+      if (key) value = (input as Record<string, unknown>)[key];
+    }
+  } else {
+    const key = lookup(DETAIL_ARGUMENTS, type);
+    if (key && Object.hasOwn(fields, key)) value = fields[key];
+  }
+  if (typeof value !== "string") return undefined;
+  const prefix = value.slice(0, ARGUMENT_CHARS).trimStart();
+  const end = prefix.search(/[\r\n]/);
+  const line = (end === -1 ? prefix : prefix.slice(0, end)).trimEnd();
+  if (!line) return undefined;
+  return end !== -1 || value.length > ARGUMENT_CHARS ? line + "…" : line;
+}

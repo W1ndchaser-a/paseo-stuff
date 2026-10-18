@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.1.0-beta.10 — 2026-10-18
+
+- Show the call's main argument after the tool name on the collapsed card header: the shell command, file path, search query or URL from the native tool detail, or the first of `command`, `cmd`, `file_path`, `filePath`, `path`, `pattern`, `query` and `url` in an unknown tool's input. It is one literal value, never a generated summary: the first line of a 200-character prefix, with `…` when anything was left out. It uses the muted monospace style and shrinks before the tool name.
+- Typecheck, lint and 275 tests pass with SDK 0.9.2 and 0.11.4. Checked live on a Paseo 0.12.0-beta.2 daemon in the hosted web client with real DeepSeek Harness tool calls; the desktop app and native mobile were not checked.
+
 ## 0.1.0-beta.9 — 2026-09-29
 
 - Add two Command Center actions: **Activity: use native tool rows (for Summary)** unregisters only the tool-call transformer, so Summary groups native tool rows again; **Activity: use tool cards (Full detail)** restores the cards. The choice is per client, not saved, and resets to cards when the plugin loads. The plugin still never reads or changes the host display preference.
