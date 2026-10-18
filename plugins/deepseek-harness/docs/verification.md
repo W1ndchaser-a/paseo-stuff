@@ -1,5 +1,27 @@
 # Verification and limits
 
+## Beta.12 — npm shrinkwrap (2026-10-18)
+
+- Registry review getpaseo/plugins#308 held the beta.11 bump because the npm
+  package ships no lock for its runtime dependency. The registry entry stayed
+  on beta.10.
+- On an isolated Paseo 0.12.0-beta.2 daemon (temporary home, relay disabled,
+  no client connected), `paseo plugin add geoqiao/deepseek-harness` failed
+  with `Invalid plugin provider icon "icon.svg": file does not exist or is not a
+  regular file`, as reported in #28. `paseo plugin add
+  npm:paseo-deepseek-harness@0.1.0-beta.11` on the same daemon reached
+  `running`.
+- `npm pack` produces 12 files including `npm-shrinkwrap.json`, which
+  contains only the root entry and `@agentclientprotocol/sdk` 1.4.0 with
+  `resolved` and `integrity`. In the extracted package,
+  `npm ci --omit=dev --ignore-scripts --legacy-peer-deps` installed exactly
+  that one package, so the shrinkwrap matches the packed `package.json`. After
+  packing, the source tree has no shrinkwrap or pack state left.
+- `npm run check` on Node 24.18.0 with SDK 0.9.2: typecheck, lint with zero
+  warnings/errors and **75 tests / 3 files**.
+- Not verified before release: installing beta.12 through Paseo. Paseo accepts
+  only published npm packages, not a local tarball.
+
 ## Beta.11 — npm package icon (2026-10-11)
 
 - The install commands were run on an isolated Paseo 0.11.2 daemon (temporary

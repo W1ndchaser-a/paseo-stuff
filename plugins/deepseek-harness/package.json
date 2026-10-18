@@ -1,6 +1,6 @@
 {
   "name": "paseo-deepseek-harness",
-  "version": "0.1.0-beta.11",
+  "version": "0.1.0-beta.12",
   "description": "DeepSeek Harness through its official ACP profile for Paseo 0.8 and later.",
   "repository": {
     "type": "git",
@@ -31,7 +31,8 @@
     "LICENSE",
     "CHANGELOG.md",
     "images/",
-    "package.json"
+    "package.json",
+    "npm-shrinkwrap.json"
   ],
   "engines": {
     "node": ">=22.19.0"

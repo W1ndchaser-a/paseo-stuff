@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.1.0-beta.12 — 2026-10-18
+
+- Ship `npm-shrinkwrap.json` in the npm package. Paseo's registry requires a
+  published lock for runtime dependencies, so the registry entry
+  `geoqiao/deepseek-harness` stayed pinned to beta.10, which has no
+  `icon.svg`, and `paseo plugin add geoqiao/deepseek-harness` still failed
+  with `Invalid plugin provider icon "icon.svg"` (#28). `prepack` now writes
+  the shrinkwrap from the production entries of `package-lock.json`; it locks
+  `@agentclientprotocol/sdk` 1.4.0 with its resolved URL and integrity, and
+  `postpack` removes it from the source tree.
+- Runtime code is unchanged from beta.11.
+
 ## 0.1.0-beta.11 — 2026-10-11
 
 - Fix npm installation on Paseo 0.11. The npm package omitted `icon.svg`, the
