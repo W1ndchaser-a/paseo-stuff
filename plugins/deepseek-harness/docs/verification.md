@@ -1,5 +1,73 @@
 # Verification and limits
 
+## Beta.13 — Paseo 0.11 launch, status and usage (2026-10-18)
+
+- `npm run check` on Node 24.18.0 with SDK **0.11.4**: typecheck, lint with
+  zero warnings/errors and **82 tests / 4 files**. The fake peer now receives
+  the daemon-style `launch`; new tests cover the registered command, `status()`
+  for a good, too-old and missing executable, session variables over the launch
+  environment, and the usage source.
+- **Live, isolated Paseo 0.12.0-beta.2 daemon on macOS** (temporary home, port
+  6799), the worktree installed as a directory, global DSH **0.2.0-rc.2**:
+  - `paseo provider ls` showed the provider `available` with three models. A
+    real turn read `secret.txt` with a shell tool and answered the codeword;
+    `ps` showed `node /opt/homebrew/bin/dsh --profile acp`, the path the daemon
+    resolved.
+  - `agents.providers.deepseek-harness.command` pointing at a wrapper script in
+    a directory with a space: the daemon's availability check, the plugin's
+    version probe (`--profile acp --version`) and the ACP process all ran
+    through the wrapper, and a real turn completed.
+  - The same override pointing at a script that prints `0.1.4`: the provider
+    became `unavailable`, and `paseo provider diagnostic deepseek-harness`
+    printed the unsupported-version message.
+  - `paseo delete` ended both DSH processes. `paseo stop` during a foreground
+    `sleep 48` tool call ended the shell and the sleep within three seconds.
+    The beta.12 test's surviving `sleep 45` was a background job the tool
+    started; DSH lets background jobs outlive the turn.
+  - The Usage panel in the hosted web client listed **DeepSeek** with
+    `Balance ¥13.26` from the real balance endpoint, using the key in
+    `~/.dsh/.credentials.yaml`. `paseo usage --agent` returned nothing for a
+    DeepSeek Harness agent: in Paseo 0.12.0-beta.3 only built-in provider
+    sessions implement `usageSession()`.
+- **DSH 0.2.1-rc.2** (npm `next`), installed under `/tmp` with its own
+  `DSH_HOME` set through `agents.providers.deepseek-harness.env`: status
+  `Ready` with three models, a real tool turn, and after `paseo agent reload`
+  the agent recalled a number from the first turn.
+- **Displayed history:** after `paseo agent reload` the timeline held only the
+  new turn. Paseo's `hydrateTimelineFromProvider` deletes the stored timeline
+  and records the provider's replay; dsh-acp documents `session/resume` as
+  restoring the log "without replaying old updates".
+- **Packed npm artifact:** `npm pack` gave 13 files and an
+  `npm-shrinkwrap.json` that locks `@agentclientprotocol/sdk` 1.4.0, `yaml`
+  2.9.1 and `zod` 4.4.3 with integrity hashes. The extracted package, with only
+  its runtime dependencies installed, loaded on the 0.12.0-beta.2 daemon, ran a
+  real tool turn and returned the balance.
+- **Live, isolated Paseo 0.11.4 daemon on macOS** (`@getpaseo/cli@0.11.4` from
+  npm, temporary home): the packed package reached `running`, the provider was
+  `Ready` with three models, a real tool turn answered the codeword, and after
+  `paseo agent reload` the agent recalled a number from the first turn.
+  `paseo delete` left no DSH process. The 0.11.4 CLI has no `usage` command;
+  the usage source registered without errors in the daemon log, and the balance
+  itself was checked only on 0.12.0-beta.2.
+- **Without credentials** (empty `DSH_HOME`, no `DEEPSEEK_API_KEY`): status
+  `Ready` with one model. The Windows CI job relies on this.
+- **Windows CI job** (`deepseek-harness / Windows daemon` in `ci.yml`): runs
+  `npm run check`, installs `@getpaseo/cli@0.11.4` and the npm `dsh`
+  (`dsh.cmd`), loads the plugin directory in a daemon and requires `Ready` and
+  a model list. Its daemon script passed on macOS with the 0.11.4 CLI and DSH
+  0.2.1-rc.2. The fake peer now runs as `node fake-dsh.mjs`, which avoids the
+  `spawn EFTYPE` failures reported in #27.
+- **Not verified:** Windows (the CI job has not run yet), the desktop app and
+  native mobile.
+
+## Beta.12 — post-release install check (2026-10-18)
+
+- `paseo plugin add npm:paseo-deepseek-harness@0.1.0-beta.12` on an isolated
+  Paseo 0.12.0-beta.2 daemon reached `running`. The provider was available
+  with three models; a real turn read a file through a tool and kept the
+  reasoning separate from the answer; context survived `paseo agent reload`
+  and a daemon restart, and `paseo delete` ended the DSH process.
+
 ## Beta.12 — npm shrinkwrap (2026-10-18)
 
 - Registry review getpaseo/plugins#308 held the beta.11 bump because the npm

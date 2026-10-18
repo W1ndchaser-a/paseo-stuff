@@ -1,10 +1,15 @@
-import { spawn, type ChildProcess } from "node:child_process";
+import type { ChildProcess } from "node:child_process";
 import { Readable, Writable } from "node:stream";
 import { ndJsonStream, type AnyMessage } from "@agentclientprotocol/sdk";
+import { spawnProcess, terminateProcess } from "@getpaseo/plugin/server";
 import type {
   AcpStream,
   AcpStreamMessage,
 } from "@getpaseo/plugin/server/acp";
+import type {
+  ProviderLaunch,
+  ProviderStatus,
+} from "@getpaseo/plugin/server/provider";
 
 // Minimum only, like the Paseo requirements range: newer DSH releases are
 // accepted, and ACP behaviour is chosen from the capabilities DSH advertises.
@@ -26,7 +31,10 @@ export interface ConnectorResource {
 }
 
 export interface DshConnectorContext {
+  /** Executable, argument prefix and complete environment resolved by the daemon. */
+  launch: ProviderLaunch;
   cwd: string;
+  /** Session variables, applied over the launch environment. */
   env: Readonly<Record<string, string>>;
   resources: Set<ConnectorResource>;
   isClosed?: () => boolean;
@@ -148,19 +156,17 @@ export async function createDshAcpStream(
   assertSupportedNodeVersion();
   assertConnectorOpen(context, "before starting");
 
-  const env = mergedEnvironment(context.env);
+  const env = { ...context.launch.env, ...context.env };
   const cwd = context.cwd || process.cwd();
-  const command = nonEmpty(env.DSH_PASEO_COMMAND) ?? "dsh";
-  const profile = nonEmpty(env.DSH_PASEO_PROFILE) ?? "acp";
+  const { command, args } = context.launch;
 
-  await probeDshVersion(command, cwd, env, context);
+  await probeDshVersion(context.launch, cwd, env, context);
   assertConnectorOpen(context, "after version probe");
 
-  const child = spawn(command, ["--profile", profile], {
+  const child = spawnProcess(command, [...args], {
     cwd,
     env,
-    stdio: ["pipe", "pipe", "pipe"],
-    windowsHide: true,
+    stdio: "pipe",
   });
   const stderr = new BoundedCapture(STDERR_CAPTURE_LIMIT);
   const owner = new ChildProcessOwner(child, command, () => stderr.value);
@@ -681,11 +687,6 @@ function hasOwn(value: RecordValue, key: string): boolean {
   return Object.prototype.hasOwnProperty.call(value, key);
 }
 
-function nonEmpty(value: string | undefined): string | undefined {
-  const trimmed = value?.trim();
-  return trimmed ? trimmed : undefined;
-}
-
 function assertConnectorOpen(
   context: DshConnectorContext,
   phase: string,
@@ -723,21 +724,6 @@ async function registerConnectorResource(
     );
   }
   throw reason;
-}
-
-function mergedEnvironment(
-  configured: Readonly<Record<string, string>>,
-): Record<string, string> {
-  const result: Record<string, string> = {};
-  for (const [key, value] of Object.entries(process.env)) {
-    if (value !== undefined) {
-      result[key] = value;
-    }
-  }
-  for (const [key, value] of Object.entries(configured)) {
-    result[key] = value;
-  }
-  return result;
 }
 
 function asError(value: unknown): Error {
@@ -849,20 +835,39 @@ class ChildProcessOwner implements AcpStreamOwner {
   }
 }
 
+/** Checks the Node and DSH versions with the daemon-resolved launch. */
+export async function checkDshStatus(
+  launch: ProviderLaunch,
+  cwd = process.cwd(),
+): Promise<ProviderStatus> {
+  try {
+    assertSupportedNodeVersion();
+    await probeDshVersion(launch, cwd, launch.env, {
+      launch,
+      cwd,
+      env: {},
+      resources: new Set(),
+    });
+    return { available: true };
+  } catch (error) {
+    return { available: false, diagnostic: asError(error).message };
+  }
+}
+
 async function probeDshVersion(
-  command: string,
+  launch: ProviderLaunch,
   cwd: string,
   env: Record<string, string>,
   context: DshConnectorContext,
 ): Promise<void> {
   assertConnectorOpen(context, "before version probe");
+  const { command } = launch;
   let child: ChildProcess;
   try {
-    child = spawn(command, ["--version"], {
+    child = spawnProcess(command, [...launch.args, "--version"], {
       cwd,
       env,
       stdio: ["ignore", "pipe", "pipe"],
-      windowsHide: true,
     });
   } catch (error) {
     throw launchPathError(command, cwd, error);
@@ -918,7 +923,7 @@ async function probeDshVersion(
           (version ?? "unknown") +
           ". This plugin requires DeepSeek Harness " +
           MINIMUM_DSH_VERSION +
-          " or newer; upgrade DSH or set DSH_PASEO_COMMAND to the intended executable." +
+          " or newer; upgrade DSH or point agents.providers.deepseek-harness.command at the intended executable." +
           diagnosticSuffix(stdout.value + "\n" + stderr.value),
       );
     }
@@ -1030,9 +1035,11 @@ async function terminateChild(
     return;
   }
 
+  // On Windows terminateProcess force-stops the whole tree at once, including
+  // DSH behind a .cmd launcher; elsewhere it sends the signal to the child.
   let firstKillError: unknown;
   try {
-    child.kill("SIGTERM");
+    await terminateProcess(child, "SIGTERM");
   } catch (error) {
     firstKillError = error;
   }
@@ -1042,7 +1049,7 @@ async function terminateChild(
 
   let secondKillError: unknown;
   try {
-    child.kill("SIGKILL");
+    await terminateProcess(child, "SIGKILL");
   } catch (error) {
     secondKillError = error;
   }
@@ -1096,7 +1103,7 @@ function launchPathError(command: string, cwd: string, cause: unknown): Error {
     "DeepSeek Harness could not start executable " +
       command +
       " in working directory " + cwd +
-      ". Check that both the executable and working directory exist. Install the official DeepSeek Harness package or set DSH_PASEO_COMMAND to an executable path if needed; this plugin never invokes a shell.",
+      ". Check that both the executable and working directory exist. Install the official DeepSeek Harness package, or set agents.providers.deepseek-harness.command in the Paseo config to its path.",
     { cause },
   );
 }

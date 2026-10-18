@@ -1,5 +1,34 @@
 # Changelog
 
+## 0.1.0-beta.13 — 2026-10-18
+
+- **Requires Paseo 0.11.0 or later.** On Paseo 0.8 to 0.10, stay on beta.12.
+- Launch DSH the way Paseo launches its own providers. The plugin registers
+  the default command `dsh --profile acp`; the daemon finds it on PATH or
+  applies `agents.providers.deepseek-harness.command` and passes the resolved
+  executable and environment. Processes start with the SDK's `spawnProcess`
+  and stop with `terminateProcess`, so a `dsh.cmd` launcher works on Windows
+  and the whole process tree stops there. This replaces the hand-built Windows
+  shell handling proposed in #27.
+- **Breaking:** `DSH_PASEO_COMMAND` and `DSH_PASEO_PROFILE` are no longer
+  read. Put the executable and profile in
+  `agents.providers.deepseek-harness.command`.
+- Add provider `status()`: an unreadable or too-old `dsh` now shows the
+  provider as unavailable, and `paseo provider diagnostic deepseek-harness`
+  gives the reason, before an agent is started.
+- Add a DeepSeek usage source. The Usage panel shows the API balance from
+  `https://api.deepseek.com/user/balance`, as text in the account's currency.
+  The key is looked up in DSH's order (environment, `$DSH_HOME/.credentials.yaml`,
+  `$DSH_HOME/.env`) on each fetch and is not stored. Adds the runtime
+  dependencies `yaml` 2.9.1 and `zod` 4.4.3.
+- Document that the displayed timeline is empty after an agent reload or
+  daemon restart: Paseo rebuilds it from the provider's replay, and DSH does
+  not replay.
+- SDK development dependencies move from 0.9.2 to 0.11.4.
+- Tests start the fake DSH peer through Node, so they no longer fail with
+  `spawn EFTYPE` on Windows. A new Windows CI job loads the plugin in a Paseo
+  0.11.4 daemon with the npm `dsh.cmd` launcher.
+
 ## 0.1.0-beta.12 — 2026-10-18
 
 - Ship `npm-shrinkwrap.json` in the npm package. Paseo's registry requires a

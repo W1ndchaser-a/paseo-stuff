@@ -31,3 +31,46 @@ jobs:
       - run: npm run prepare:markdown --if-present
       - run: npm run prepare:wasm --if-present
       - run: npm run check
+  deepseek-harness-windows:
+    # Runs the real npm dsh.cmd launcher through a Paseo daemon. No API key is
+    # needed: the provider status and model catalog work without one.
+    name: deepseek-harness / Windows daemon
+    runs-on: windows-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        shell: bash
+        working-directory: plugins/deepseek-harness
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: plugins/deepseek-harness/package-lock.json
+      - run: npm ci --ignore-scripts --legacy-peer-deps --no-audit --no-fund
+      - run: npm run check
+      - name: Install Paseo and DSH
+        run: |
+          npm install -g --no-audit --no-fund @getpaseo/cli@0.11.4
+          npm install -g --ignore-scripts --no-audit --no-fund @deepseek-ai/dsh@latest
+          where dsh
+          dsh --profile acp --version
+      - name: Load the plugin in a daemon
+        run: |
+          home="$RUNNER_TEMP/paseo-home"
+          mkdir -p "$home"
+          echo '{"version":1,"daemon":{"listen":"127.0.0.1:6798","relay":{"enabled":false}},"pluginsEnabled":true}' > "$home/config.json"
+          paseo daemon start --home "$home" --timeout 120
+          echo y | paseo plugin add "$PWD" --home "$home"
+          paseo plugin ls --home "$home"
+          diagnostic=$(paseo provider diagnostic deepseek-harness --home "$home")
+          echo "$diagnostic"
+          grep -q "Provider is available" <<< "$diagnostic"
+          grep -q "Status: Ready" <<< "$diagnostic"
+          paseo provider models deepseek-harness --home "$home"
+      - name: Daemon log
+        if: always()
+        run: cat "$RUNNER_TEMP/paseo-home/daemon.log" || true

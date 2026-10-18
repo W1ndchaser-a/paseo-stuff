@@ -6,9 +6,11 @@ import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import type { PluginServerContext } from "@getpaseo/plugin/server";
 import {
   ProviderEventSchema,
+  type ProviderConnectRequest,
   type ProviderContent,
   type ProviderEvent,
   type ProviderInput,
+  type ProviderLaunch,
 } from "@getpaseo/plugin/server/provider";
 import serverEntry from "../index.server";
 import {
@@ -27,7 +29,6 @@ const fakeDsh = fileURLToPath(
 const modelFlash = '["deepseek-official","deepseek-v4-flash"]';
 const modelPro = '["deepseek-official","deepseek-v4-pro"]';
 const environmentKeys = [
-  "DSH_PASEO_COMMAND",
   "DSH_FAKE_VERSION",
   "DSH_FAKE_CAPABILITIES",
   "DSH_FAKE_NO_INITIALIZE",
@@ -51,7 +52,6 @@ beforeAll(async () => {
   await import("node:fs/promises").then(({ mkdir }) =>
     Promise.all([mkdir(cwdA), mkdir(cwdB)]),
   );
-  process.env.DSH_PASEO_COMMAND = fakeDsh;
   delete process.env.DSH_FAKE_VERSION;
   delete process.env.DSH_FAKE_CAPABILITIES;
   delete process.env.DSH_FAKE_NO_INITIALIZE;
@@ -94,10 +94,17 @@ describe.sequential("DeepSeek Harness provider", () => {
 
   it("registers the true server provider entry and exposes the managed factory", async () => {
     const registerProvider = vi.fn();
+    const registerUsageSource = vi.fn();
     const cleanup = serverEntry({
       registerProvider,
+      registerUsageSource,
     } as unknown as PluginServerContext);
     expect(registerProvider).toHaveBeenCalledOnce();
+    expect(registerUsageSource).toHaveBeenCalledOnce();
+    expect(registerUsageSource.mock.calls[0]?.[0]).toMatchObject({
+      id: "deepseek",
+      icon: "icon.svg",
+    });
     const provider = registerProvider.mock.calls[0]?.[0];
     expect(provider).toMatchObject({
       id: "deepseek-harness",
@@ -114,6 +121,7 @@ describe.sequential("DeepSeek Harness provider", () => {
     const registerProvider = vi.fn();
     const cleanup = serverEntry({
       registerProvider,
+      registerUsageSource: vi.fn(),
     } as unknown as PluginServerContext);
     const icon: unknown = registerProvider.mock.calls[0]?.[0]?.icon;
     await cleanup();
@@ -566,7 +574,11 @@ describe.sequential("DeepSeek Harness provider", () => {
     await writeFile(logPath, "");
 
     await withEnvironment({ DSH_FAKE_SPAWN_LOG: logPath }, async () => {
-      const connection = await connect();
+      const launch = testLaunch();
+      const connection = await createDeepSeekHarnessProvider().connect({
+        ...connectRequest(),
+        launch,
+      });
       try {
         await waitForFakeSpawnLog(
           logPath,
@@ -574,43 +586,39 @@ describe.sequential("DeepSeek Harness provider", () => {
             records.filter((record) => record.event === "start").length >= 2,
         );
 
-        await withEnvironment({ DSH_FAKE_HANG_VERSION: "1" }, async () => {
-          const catalog = connection.send({
-            type: "catalog",
-            requestId: "close-catalog",
-            cwd: testRoot,
-          });
-          await waitForFakeSpawnLog(
-            logPath,
-            (records) =>
-              records.filter(
-                (record) =>
-                  record.event === "start" && record.args[0] === "--version",
-              ).length >= 2,
-          );
-
-          const started = Date.now();
-          await connection.close();
-          await catalog;
-          expect(Date.now() - started).toBeLessThan(4_000);
+        // Later connector calls on this connection reuse its launch environment.
+        launch.env.DSH_FAKE_HANG_VERSION = "1";
+        const catalog = connection.send({
+          type: "catalog",
+          requestId: "close-catalog",
+          cwd: testRoot,
         });
+        await waitForFakeSpawnLog(
+          logPath,
+          (records) =>
+            records.filter(
+              (record) =>
+                record.event === "start" && record.args.includes("--version"),
+            ).length >= 2,
+        );
+
+        const started = Date.now();
+        await connection.close();
+        await catalog;
+        expect(Date.now() - started).toBeLessThan(4_000);
 
         const records = await waitForFakeSpawnLog(
           logPath,
-          (current) => {
-            const starts = current.filter((record) => record.event === "start");
-            const exits = current.filter((record) => record.event === "exit");
-            return starts.length > 0 && starts.length === exits.length;
-          },
+          allStartedExited,
         );
         expect(
           records.filter(
-            (record) => record.event === "start" && record.args[0] === "--profile",
+            (record) => record.event === "start" && !record.args.includes("--version"),
           ),
         ).toHaveLength(1);
         expect(
           records.filter(
-            (record) => record.event === "start" && record.args[0] === "--version",
+            (record) => record.event === "start" && record.args.includes("--version"),
           ),
         ).toHaveLength(2);
       } finally {
@@ -641,7 +649,7 @@ describe.sequential("DeepSeek Harness provider", () => {
             (records) =>
               records.filter(
                 (record) =>
-                  record.event === "start" && record.args[0] === "--profile",
+                  record.event === "start" && !record.args.includes("--version"),
               ).length >= 2,
           );
 
@@ -653,15 +661,11 @@ describe.sequential("DeepSeek Harness provider", () => {
 
         const records = await waitForFakeSpawnLog(
           logPath,
-          (current) => {
-            const starts = current.filter((record) => record.event === "start");
-            const exits = current.filter((record) => record.event === "exit");
-            return starts.length > 0 && starts.length === exits.length;
-          },
+          allStartedExited,
         );
         expect(
           records.filter(
-            (record) => record.event === "start" && record.args[0] === "--profile",
+            (record) => record.event === "start" && !record.args.includes("--version"),
           ),
         ).toHaveLength(2);
       } finally {
@@ -703,15 +707,11 @@ describe.sequential("DeepSeek Harness provider", () => {
 
         const records = await waitForFakeSpawnLog(
           logPath,
-          (current) => {
-            const starts = current.filter((record) => record.event === "start");
-            const exits = current.filter((record) => record.event === "exit");
-            return starts.length > 0 && starts.length === exits.length;
-          },
+          allStartedExited,
         );
         expect(
           records.filter(
-            (record) => record.event === "start" && record.args[0] === "--profile",
+            (record) => record.event === "start" && !record.args.includes("--version"),
           ),
         ).toHaveLength(2);
       } finally {
@@ -734,7 +734,7 @@ describe.sequential("DeepSeek Harness provider", () => {
           logPath,
           (records) =>
             records.some(
-              (record) => record.event === "start" && record.args[0] === "--version",
+              (record) => record.event === "start" && record.args.includes("--version"),
             ),
         );
 
@@ -745,15 +745,11 @@ describe.sequential("DeepSeek Harness provider", () => {
 
         const records = await waitForFakeSpawnLog(
           logPath,
-          (current) => {
-            const starts = current.filter((record) => record.event === "start");
-            const exits = current.filter((record) => record.event === "exit");
-            return starts.length > 0 && starts.length === exits.length;
-          },
+          allStartedExited,
         );
         expect(
           records.filter(
-            (record) => record.event === "start" && record.args[0] === "--profile",
+            (record) => record.event === "start" && !record.args.includes("--version"),
           ),
         ).toHaveLength(0);
       },
@@ -773,7 +769,7 @@ describe.sequential("DeepSeek Harness provider", () => {
           logPath,
           (records) =>
             records.some(
-              (record) => record.event === "start" && record.args[0] === "--profile",
+              (record) => record.event === "start" && !record.args.includes("--version"),
             ),
         );
 
@@ -783,15 +779,11 @@ describe.sequential("DeepSeek Harness provider", () => {
 
         const records = await waitForFakeSpawnLog(
           logPath,
-          (current) => {
-            const starts = current.filter((record) => record.event === "start");
-            const exits = current.filter((record) => record.event === "exit");
-            return starts.length > 0 && starts.length === exits.length;
-          },
+          allStartedExited,
         );
         expect(
           records.filter(
-            (record) => record.event === "start" && record.args[0] === "--profile",
+            (record) => record.event === "start" && !record.args.includes("--version"),
           ),
         ).toHaveLength(1);
       },
@@ -811,6 +803,7 @@ describe.sequential("DeepSeek Harness provider", () => {
         const registerProvider = vi.fn();
         const cleanup = serverEntry({
           registerProvider,
+          registerUsageSource: vi.fn(),
         } as unknown as PluginServerContext);
         const provider = registerProvider.mock.calls[0]?.[0] as
           | ManagedDeepSeekHarnessProvider
@@ -855,12 +848,10 @@ describe.sequential("DeepSeek Harness provider", () => {
       );
     });
 
-    await withEnvironment({ DSH_PASEO_COMMAND: "/missing/dsh" }, async () => {
-      const provider = createDeepSeekHarnessProvider({ startupTimeoutMs: 500 });
-      await expect(provider.connect(connectRequest())).rejects.toThrow(
-        "Check that both the executable and working directory exist",
-      );
-    });
+    const missing = createDeepSeekHarnessProvider({ startupTimeoutMs: 500 });
+    await expect(
+      missing.connect({ ...connectRequest(), launch: testLaunch("/missing/dsh") }),
+    ).rejects.toThrow("Check that both the executable and working directory exist");
 
     await withEnvironment({ DSH_FAKE_NO_INITIALIZE: "1" }, async () => {
       const provider = createDeepSeekHarnessProvider({ startupTimeoutMs: 150 });
@@ -882,11 +873,61 @@ describe.sequential("DeepSeek Harness provider", () => {
     },
   );
 
+  it("registers the default dsh command and reports status from the resolved launch", async () => {
+    const provider = createDeepSeekHarnessProvider();
+    expect(provider.command).toEqual(["dsh", "--profile", "acp"]);
+    await expect(provider.status?.({ launch: testLaunch() })).resolves.toEqual({
+      available: true,
+    });
+    await withEnvironment({ DSH_FAKE_VERSION: "0.1.4" }, async () => {
+      const status = await provider.status?.({ launch: testLaunch() });
+      expect(status?.available).toBe(false);
+      expect(status?.diagnostic).toContain("Unsupported DeepSeek Harness version 0.1.4");
+    });
+    const missing = await provider.status?.({ launch: testLaunch("/missing/dsh") });
+    expect(missing?.available).toBe(false);
+    expect(missing?.diagnostic).toContain("could not start executable /missing/dsh");
+    await expect(provider.status?.({})).resolves.toEqual({
+      available: false,
+      diagnostic: expect.stringContaining("requires Paseo 0.11"),
+    });
+    await expect(
+      provider.connect({ ...connectRequest(), launch: undefined }),
+    ).rejects.toThrow("requires Paseo 0.11");
+  });
+
+  it("applies session variables over the launch environment", async () => {
+    const logPath = join(testRoot, "launch-env.log");
+    await writeFile(logPath, "");
+    const resources = new Set<ConnectorResource>();
+    const launch = testLaunch();
+    launch.env.DSH_FAKE_SPAWN_LOG = logPath;
+    launch.env.DSH_TEST_MARKER = "launch";
+    const stream = await createDshAcpStream({
+      launch,
+      cwd: cwdA,
+      env: { DSH_TEST_MARKER: "session" },
+      resources,
+    });
+    try {
+      const records = await waitForFakeSpawnLog(logPath, (current) =>
+        current.some((record) => record.event === "start" && !record.args.includes("--version")),
+      );
+      const start = records.find(
+        (record) => record.event === "start" && !record.args.includes("--version"),
+      );
+      expect(start?.args).toEqual(["--profile", "acp"]);
+      expect(start?.marker).toBe("session");
+    } finally {
+      await stream.close();
+    }
+  });
+
   it("names the working directory when a spawn path is missing", async () => {
     const resources = new Set<ConnectorResource>();
     const cwd = join(testRoot, "missing-workspace");
     const error = await createDshAcpStream({
-      cwd, env: { DSH_PASEO_COMMAND: fakeDsh }, resources,
+      launch: testLaunch(), cwd, env: {}, resources,
     }).then(
       () => { throw new Error("Expected missing-directory failure"); },
       (cause: unknown) => cause,
@@ -933,12 +974,11 @@ describe.sequential("DeepSeek Harness provider", () => {
           await expect(provider.connect(connectRequest())).rejects.toThrow(
             "version probe timed out after 5000ms",
           );
-          const records = await waitForFakeSpawnLog(logPath, (current) =>
-            current.some((record) => record.event === "exit"),
-          );
+          const records = await waitForFakeSpawnLog(logPath, allStartedExited);
           expect(records.filter((record) => record.event === "start")).toHaveLength(1);
-          expect(records.find((record) => record.event === "start")?.args).toEqual(["--version"]);
-          expect(records.filter((record) => record.event === "exit")).toHaveLength(1);
+          expect(records.find((record) => record.event === "start")?.args).toEqual([
+            "--profile", "acp", "--version",
+          ]);
         } finally {
           await provider.dispose();
         }
@@ -950,11 +990,9 @@ describe.sequential("DeepSeek Harness provider", () => {
     const resources = new Set<ConnectorResource>();
     let closed = false;
     const streamPromise = createDshAcpStream({
+      launch: testLaunch(),
       cwd: testRoot,
-      env: {
-        DSH_PASEO_COMMAND: fakeDsh,
-        DSH_FAKE_HANG_VERSION: "1",
-      },
+      env: { DSH_FAKE_HANG_VERSION: "1" },
       resources,
       isClosed: () => closed,
     });
@@ -970,11 +1008,23 @@ describe.sequential("DeepSeek Harness provider", () => {
   });
 });
 
-function connectRequest(): {
-  versions: readonly number[];
-  capabilities: readonly string[];
-} {
+/**
+ * The daemon-resolved launch, with the environment as it is at call time.
+ * The fake runs through Node so Windows does not need to execute a .mjs file.
+ */
+function testLaunch(command: string = process.execPath): ProviderLaunch {
+  const env: Record<string, string> = {};
+  for (const [key, value] of Object.entries(process.env)) {
+    if (value !== undefined) {
+      env[key] = value;
+    }
+  }
+  return { command, args: [fakeDsh, "--profile", "acp"], env };
+}
+
+function connectRequest(): ProviderConnectRequest {
   return {
+    launch: testLaunch(),
     versions: [1],
     capabilities: [
       "prompt.message",
@@ -1203,11 +1253,30 @@ async function waitForCondition(
   }
 }
 
+/**
+ * Every logged fake process has exited. On Windows terminateProcess uses
+ * taskkill /F, so a killed fake cannot log its own exit; check the PID instead.
+ */
+function allStartedExited(records: readonly FakeLogRecord[]): boolean {
+  const starts = records.filter((record) => record.event === "start");
+  return starts.length > 0 && starts.every((record) => !isRunning(record.pid));
+}
+
+function isRunning(pid: number): boolean {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (error) {
+    return (error as NodeJS.ErrnoException).code === "EPERM";
+  }
+}
+
 interface FakeLogRecord {
   event: string;
   pid: number;
   args: string[];
   text?: string;
+  marker?: string;
 }
 
 async function readFakeSpawnLog(path: string): Promise<FakeLogRecord[]> {

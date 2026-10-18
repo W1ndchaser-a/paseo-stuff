@@ -20,7 +20,7 @@ function log(event, fields = {}) {
   }
 }
 
-log("start");
+log("start", { marker: process.env.DSH_TEST_MARKER });
 process.once("exit", () => log("exit", { exitCode: process.exitCode ?? 0 }));
 process.once("SIGTERM", () => {
   log("signal", { signal: "SIGTERM" });

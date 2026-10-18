@@ -4,15 +4,20 @@ import type {
   ProviderConnection,
   ProviderEvent,
   ProviderInput,
+  ProviderLaunch,
   ProviderRegistration,
 } from "@getpaseo/plugin/server/provider";
 import {
+  checkDshStatus,
   createDshAcpStream,
   type ConnectorResource,
   type DshConnectorContext,
 } from "./dsh-compatibility";
 
 const PROVIDER_ID = "deepseek-harness";
+const DEFAULT_COMMAND = ["dsh", "--profile", "acp"] as const;
+const MISSING_LAUNCH =
+  "DeepSeek Harness requires Paseo 0.11 or newer, which supplies the resolved dsh launch";
 const CLOSE_TIMEOUT_MS = 5_000;
 const COMMAND_CAPABILITY = "prompt.command";
 
@@ -30,6 +35,7 @@ interface InputContext {
 }
 
 interface ConnectionScope extends InputContext {
+  launch: ProviderLaunch;
   resources: Set<ConnectorResource>;
   closed: boolean;
   closeConnection?: () => Promise<void>;
@@ -63,6 +69,7 @@ export function createDeepSeekHarnessProvider(
         );
       }
       const context: DshConnectorContext = {
+        launch: scope.launch,
         cwd: scope.cwd,
         env: scope.env,
         resources: scope.resources,
@@ -190,6 +197,7 @@ export function createDeepSeekHarnessProvider(
         const inputContext = contextForInput(input);
         const inputScope: ConnectionScope = {
           ...inputContext,
+          launch: scope.launch,
           resources: scope.resources,
           get closed() {
             return scope.closed;
@@ -208,13 +216,24 @@ export function createDeepSeekHarnessProvider(
 
   const registration: ManagedDeepSeekHarnessProvider = {
     ...delegate,
+    command: DEFAULT_COMMAND,
+    async status(request) {
+      if (!request.launch) {
+        return { available: false, diagnostic: MISSING_LAUNCH };
+      }
+      return checkDshStatus(request.launch);
+    },
     async connect(request) {
       if (disposed) {
         throw new Error("DeepSeek Harness provider has been disposed");
       }
+      if (!request.launch) {
+        throw new Error(MISSING_LAUNCH);
+      }
 
       const resources = new Set<ConnectorResource>();
       const scope: ConnectionScope = {
+        launch: request.launch,
         cwd: process.cwd(),
         env: {},
         resources,
