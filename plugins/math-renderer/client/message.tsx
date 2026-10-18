@@ -30,21 +30,25 @@ function FormulaImage({ uri, width, height, fallback }: { uri: string; width: nu
   return failed ? fallback : <Image source={source} resizeMode="contain" accessible={false}
     style={{ width, height }} onError={() => setFailed(true)} />;
 }
-export function Formula({ tex, raw, theme, compact }: { tex: string; raw: string; theme: PluginTheme; compact: boolean }) {
-  const [source, setSource] = useState(false);
-  const copy = useCopy();
+function useFormula(tex: string, theme: PluginTheme, size: number, display: boolean, source: boolean) {
   const rpc = useRpc(renderMath);
   const { fontScale, scale } = useWindowDimensions();
   const input: RenderInput = {
-    tex, color: theme.colors.foreground,
-    fontSize: Math.max(12, Math.min(28, Math.round(18 * fontScale))),
+    tex, color: theme.colors.foreground, display,
+    fontSize: Math.max(12, Math.min(28, Math.round(size * fontScale))),
     scale: Math.max(1, Math.min(3, Math.ceil(scale))),
   };
   const valid = renderInput.safeParse(input).success;
   const query = useQuery({
-    queryKey: ["math-renderer-v1", input], queryFn: () => rpc(input),
+    queryKey: ["math-renderer-v2", input], queryFn: () => rpc(input),
     enabled: valid && !source, staleTime: Infinity, gcTime: 60_000, retry: false,
   });
+  return { valid, query };
+}
+export function Formula({ tex, raw, theme, compact }: { tex: string; raw: string; theme: PluginTheme; compact: boolean }) {
+  const [source, setSource] = useState(false);
+  const copy = useCopy();
+  const { valid, query } = useFormula(tex, theme, 18, true, source);
   const result = query.data;
   const rawView = <Text selectable style={{ color: theme.colors.foreground, fontFamily: "monospace", fontSize: 14, lineHeight: 22 }}>{raw}</Text>;
   return <View testID="formula" style={{ gap: 6, marginVertical: 8, minWidth: 0 }}>
@@ -67,10 +71,27 @@ export function Formula({ tex, raw, theme, compact }: { tex: string; raw: string
   </View>;
 }
 
+// Sits on the text baseline, lowered by the formula's depth. Tap to switch
+// between the formula and its LaTeX source.
+function InlineFormula({ tex, raw, theme }: { tex: string; raw: string; theme: PluginTheme }) {
+  const [source, setSource] = useState(false);
+  const { valid, query } = useFormula(tex, theme, 16, false, source);
+  const result = query.data;
+  const rawView = <Text onPress={valid ? () => setSource(false) : undefined}>{raw}</Text>;
+  if (source || !result?.ok) return rawView;
+  return <Text accessibilityRole="image" accessibilityLabel={"Formula: " + tex} onPress={() => setSource(true)}>
+    <View style={{ width: result.width, height: result.height, transform: [{ translateY: result.depth }] }}>
+      <FormulaImage key={result.uri} uri={result.uri} width={result.width} height={result.height} fallback={rawView} />
+    </View>
+  </Text>;
+}
+
 function InlineContent({ items, theme }: { items: Inline[]; theme: PluginTheme }): ReactNode {
   const toast = useToast();
   return items.map((item, i) => {
-    if (item.kind === "text") return item.text;
+    // A word joiner keeps punctuation on the line of the formula before it.
+    if (item.kind === "text") return items[i - 1]?.kind === "math" && /^[.,;:!?)\]}、，。；：！？）]/.test(item.text) ? "\u2060" + item.text : item.text;
+    if (item.kind === "math") return <InlineFormula key={i} tex={item.tex} raw={item.raw} theme={theme} />;
     if (item.kind === "code") return <Text key={i} style={{ color: theme.colors.foreground, backgroundColor: theme.colors.surface1, fontFamily: "monospace" }}>{item.text}</Text>;
     if (item.kind === "link") return <Text key={i} accessibilityRole="link"
       style={{ color: theme.colors.accent, textDecorationLine: "underline" }}

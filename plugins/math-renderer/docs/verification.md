@@ -1,5 +1,44 @@
 # Verification scope
 
+## Beta.5 — inline math (2026-10-18)
+
+- `npm run check` passed on Node **24.18.0** with the pinned **0.9.2** packages:
+  typecheck, zero lint warnings/errors and **6 files / 82 tests**. An isolated copy with
+  the **0.11.4** client, plugin and protocol packages installed without saving passed
+  the same check.
+- New tests cover `\(...\)` and `$...$` parsing, prices and unclosed delimiters
+  staying text, the 64/65 formula limit, inline depth and height from the renderer, and
+  the two recorded model replies (27 and 9 formulas, now counting inline ones). The
+  complete client bundle still loads in the RN Hermes executable test.
+- Live test on an isolated Paseo **0.12.0-beta.2** daemon (temporary home), with the
+  plugin installed from this directory and the hosted web client at app.paseo.sh. A
+  DeepSeek Harness agent repeated two prepared replies verbatim:
+  - `$x_i$`, `\(\bar{x} = \frac{1}{n}\sum_{i=1}^n x_i\)`, `$ax^2+bx+c=0$`,
+    `$\Delta = b^2-4ac \ge 0$`, `$e^{i\pi}+1=0$` in a bold list item, `$x^2$`,
+    `$\alpha_1$` and `\(E=mc^2\)` in a Chinese sentence rendered as inline images on
+    the text baseline. The `$$` block in the same reply rendered with its action row.
+  - `$5 and $10, or US$7` and `价格是 $5 和 $10` stayed text.
+  - A period, comma or `。` after a formula stayed on the formula's line, at 1280px
+    and at 390px width. The DOM text contains U+2060 before that punctuation.
+  - Tapping `E=mc^2` showed `\(E=mc^2\)`; tapping the source showed the formula again.
+  - The browser console showed no plugin errors or warnings.
+- **Page reload (hosted client, 0.11.4):** after reloading the page, the most recent
+  reply stayed native while earlier replies rendered. A temporary console log in the
+  transform showed the host passing that reply with `phase: "streaming"`. The same
+  behaviour occurred with the unchanged beta.4 code, so it is not caused by inline math.
+  Reported as [getpaseo/paseo#7322](https://github.com/getpaseo/paseo/issues/7322),
+  then closed because the 0.12.0-beta.3 client does not show it.
+- The same daemon with the **0.12.0-beta.3** web client (`app-dist` from the desktop
+  app, served locally):
+  - After a page reload, the most recent reply rendered, including `$y^2$`.
+  - Chat Find for `Prices stay` found 2 of 2 and highlighted the match inside the
+    rendered reply. `。价格是` found 1 of 1 next to a formula, so U+2060 does not
+    break Find. `mc^2` found no match: formula source is not searchable.
+  - A reply with inline math, a table and `$$` stayed native as a whole, as intended.
+  - Chat outline jumped from the second prompt back to the first, past rendered rows.
+- **Not verified:** the desktop app, native iOS/Android, and the 0.11.4 daemon with
+  this beta.
+
 ## Paseo 0.11.2 check (2026-10-11)
 
 - No runtime change; the released beta.4 code is unchanged. This check accompanies the

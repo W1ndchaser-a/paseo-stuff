@@ -29,7 +29,7 @@ describe("Paseo 0.9 whole-message presentation", () => {
     "$$x^2$$\n\n[File](./file.ts)",
     "$$x^2$$\n\n| a | b |\n|---|---|\n| 1 | 2 |",
     "$$x^2$$\n\n" + "a".repeat(96000),
-    Array(33).fill("$$x$$").join("\n\n"),
+    Array(65).fill("$$x$$").join("\n\n"),
   ])("keeps unsupported or oversized whole replies native", text => {
     const present = createStreamPresentation();
     const first = present(input([message("$$x^2$$")]));

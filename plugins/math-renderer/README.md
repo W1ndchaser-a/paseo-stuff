@@ -1,14 +1,14 @@
 # Math Renderer for Paseo
 
-Render **block LaTeX inside assistant reply bodies**, with one muted English action row
-per formula: **Show LaTeX** and **Copy LaTeX**. No extra panel or duplicate message toolbar.
+Render **block and inline LaTeX inside assistant reply bodies**. Block formulas get one
+muted English action row: **Show LaTeX** and **Copy LaTeX**. Inline formulas sit in the
+text; tap one to see its source. No extra panel or duplicate message toolbar.
 
-> **Experimental beta — 0.1.0-beta.4.** Requires Paseo app and daemon
-> **0.9.0-beta.1 or newer**. Checked offline against Paseo 0.9.2 and 0.10.0-beta.1,
-> and live on a 0.10.0-beta.1 daemon in the hosted web client. The checks also pass with
-> the 0.11.2 SDK and the plugin loads on a 0.11.2 daemon. Replies stay native while
-> streaming; supported block formulas render after completion.
-> Inline math is not typeset. Native iOS/Android acceptance and complete native Markdown
+> **Experimental beta — 0.1.0-beta.5.** Requires Paseo app and daemon
+> **0.9.0-beta.1 or newer**. Checked offline against Paseo 0.9.2 and 0.10.0-beta.1; the
+> checks also pass with the 0.11.4 SDK. Beta.5 was tested live on a 0.12.0-beta.2 daemon
+> in the hosted web client. Replies stay native while streaming; supported formulas
+> render after completion. Native iOS/Android acceptance and complete native Markdown
 > parity are not finished. Read the limitations before enabling this trusted plugin.
 
 ![Dark component preview of block math and English actions](images/math-dark.png)
@@ -30,7 +30,7 @@ paseo --host <host:port> plugin ls
 To install the pinned prerelease directly from Git instead:
 
 ```sh
-paseo plugin add git:geoqiao/paseo-stuff:plugins/math-renderer --ref math-renderer-v0.1.0-beta.4 --host <host:port>
+paseo plugin add git:geoqiao/paseo-stuff:plugins/math-renderer --ref math-renderer-v0.1.0-beta.5 --host <host:port>
 ```
 
 Paseo 0.11 reads a bare `owner/name` source as a registry ID, so the `git:` prefix is
@@ -41,7 +41,7 @@ it does not import any sibling plugin or depend on root-installed packages.
 For local development, run the checks below, then install this directory or reload
 the existing runtime ID.
 
-Beta.4 removes the `<0.10.0` upper bound so Paseo 0.10 prereleases can load the plugin,
+Beta.5 adds inline math. Beta.4 removes the `<0.10.0` upper bound so Paseo 0.10 prereleases can load the plugin,
 and tests against Paseo 0.9.2 host sources. Beta.3 added 0.9 whole-message handling,
 host external-link opening and a native-reply mode for chat Find. Beta.2 fixed mobile
 bundle loading and added bold Greek symbols.
@@ -57,6 +57,12 @@ Likewise, avoid overlapping assistant-message replacement plugins.
 - Closed display-math blocks: `$$...$$` and `\[...\]`, with delimiters occupying their own lines
   or the entire block on one line.
 - Closed fenced `math` blocks, including one redundant outer display-delimiter pair.
+- Inline math: `\(...\)` and `$...$` inside paragraphs, headings, lists and quotes.
+  A `$` formula needs no space just inside either delimiter and no digit right after
+  the closing `$`, so `costs $5 and $10` stays text. Write `\(...\)` when the
+  formula must start or end with a space. `$$...$$` or `\[...\]` in the middle of a
+  paragraph and unclosed delimiters keep their source.
+- Tap an inline formula to see its LaTeX source, and tap the source to switch back.
 - Paragraphs, headings, emphasis, lists, quotes, ordinary code, and HTTP(S) Markdown links.
 - Streaming replies use Paseo's native Markdown renderer. Supported formulas are
   typeset when the whole reply completes, avoiding repeated full-document parsing
@@ -80,20 +86,29 @@ or wrap the entire reply in a code fence.
 
 ## Limitations
 
-- **Block math only:** `$...$` and `\(...\)` remain source, not inline math layout.
+- **Most recent reply after a page reload:** in the 0.11.4 web client, the last reply
+  of a reloaded agent stays native until the agent's next turn. Earlier replies render.
+  The plugin cannot detect this case. The 0.12.0-beta.3 web client renders that reply
+  ([getpaseo/paseo#7322](https://github.com/getpaseo/paseo/issues/7322)).
+- Inline formulas are images, so a long formula does not wrap across lines.
+  Punctuation after a formula is joined to it with an invisible U+2060 word joiner,
+  which appears in copied text.
+- Text such as `$x$5` (a digit right after the closing `$`) is not math; amounts
+  written as `$5$` are typeset as the formula 5.
 - The Paseo plugin SDK (0.9.0-beta.1 through 0.10.0-beta.1) does not expose the native
   Markdown renderer or math-node extensions.
   The plugin replaces supported source rows with its own small Markdown renderer;
   code highlighting, workspace-file interactions and native selection behavior are not fully reproduced.
-- Tables, images, explicit HTML, non-HTTP(S) links, more than 32 formulas or more
-  than 96,000 characters cause the entire completed source reply to remain native.
-- **Chat Find:** Paseo 0.9.0-beta.1 through 0.10.0-beta.1 cannot map a search hit to a
-  replaced plugin row. Before Cmd/Ctrl+F, choose **Math: use native replies for chat
-  Find** in the Command Center.
+- Tables, images, explicit HTML, non-HTTP(S) links, more than 64 formulas (block and
+  inline) or more than 96,000 characters cause the entire completed source reply to remain native.
+- **Chat Find:** in the 0.12.0-beta.3 web client, Find matches and highlights text in
+  rendered replies, but not formula source such as `mc^2`. Paseo 0.9.0-beta.1 through
+  0.11.4 cannot reliably jump to a match in a rendered reply. To search formula source,
+  or on those versions, choose **Math: use native replies for chat Find** in the
+  Command Center before Cmd/Ctrl+F.
   Choose **Math: render block formulas** afterwards. These actions affect this
   client's selected host, restore native rows without changing history, and reset
   to formula rendering when the plugin/client reloads. Other clients are unaffected.
-  Find inside rendered formula replies remains an upstream integration limitation.
 - Local formula viewing state does not survive every virtualization unmount.
 - MathJax base + AMS + boldsymbol only. `\boldsymbol{\mu}` and other bold math
   symbols are supported. Missing glyphs (including many non-Latin text glyphs),
@@ -119,7 +134,7 @@ No external math service, font URL, system-font scan, runtime filesystem access,
 process or extra HTTP listener is used by the renderer. This is not a promise that
 Paseo's trusted plugin environment is a security sandbox.
 
-Limits include 96,000 characters / 32 formulas per complete source reply, 4,096 characters per formula,
+Limits include 96,000 characters / 64 formulas per complete source reply, 4,096 characters per formula,
 bounded TeX commands/nesting/rows, 2,400×800 logical pixels / 4 million raster pixels,
 1 MB SVG/PNG, 128 cache entries / 8 MB of image URIs, and at most 16 pending renders.
 These are **not a hard CPU timeout or a strict memory sandbox**. Use trusted inputs;

@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { createMathRenderer } from "./render";
 import type { RenderInput } from "../shared/contracts";
 
-const input: RenderInput = { tex: "x^2", color: "#eeeeee", fontSize: 18, scale: 2 };
+const input: RenderInput = { tex: "x^2", color: "#eeeeee", fontSize: 18, scale: 2, display: true };
 describe("real MathJax → embedded WASM → PNG", () => {
   it.each([
     String.raw`x = \frac{-b \pm \sqrt{b^2-4ac}}{2a}`,
@@ -21,6 +21,22 @@ describe("real MathJax → embedded WASM → PNG", () => {
         expect(png.readUInt32BE(20)).toBe(result.height * 2);
         expect(result.width).toBeGreaterThan(10);
         expect(result.height).toBeGreaterThan(10);
+      }
+    } finally { renderer.dispose(); }
+  });
+  it("typesets inline formulas smaller, with their depth below the baseline", async () => {
+    const renderer = createMathRenderer();
+    try {
+      const tex = String.raw`\frac{a}{b}`;
+      const block = await renderer.render({ ...input, tex });
+      const inline = await renderer.render({ ...input, tex, display: false });
+      const flat = await renderer.render({ ...input, tex: "x^2", display: false });
+      expect(block.ok && inline.ok && flat.ok).toBe(true);
+      if (block.ok && inline.ok && flat.ok) {
+        expect(inline.height).toBeLessThan(block.height);
+        expect(inline.depth).toBeGreaterThan(flat.depth);
+        expect(flat.depth).toBeGreaterThanOrEqual(2);
+        expect(inline.depth).toBeLessThan(inline.height);
       }
     } finally { renderer.dispose(); }
   });

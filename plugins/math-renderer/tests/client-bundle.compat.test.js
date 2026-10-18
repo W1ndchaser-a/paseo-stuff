@@ -35,7 +35,7 @@ var schema = {};
   schema[key] = function() { return schema; };
 });
 var z = {};
-["object", "string", "number", "literal", "discriminatedUnion"].forEach(function(key) {
+["object", "string", "number", "boolean", "literal", "discriminatedUnion"].forEach(function(key) {
   z[key] = function() { return schema; };
 });
 function runtimeRequire(name) {
@@ -71,8 +71,9 @@ check(transformer.query.itemType === "assistant_message", "Wrong source type");
 check(typeof contributions[0].Component === "function", "Missing renderer");
 var parse = evaluate(${JSON.stringify(parserBundle)})(runtimeRequire).parseDocument;
 var samples = ${JSON.stringify(samples)};
-samples.forEach(function(text) {
-  check(parse(text).formulas === 6, "Mixed Markdown lost formulas");
+samples.forEach(function(text, index) {
+  // Six display formulas each, plus the inline ones.
+  check(parse(text).formulas === [27, 9][index], "Mixed Markdown lost formulas");
   for (var n = 0; n <= text.length; n++) {
     var prefix = text.slice(0, n);
     var source = Object.freeze({ type: "assistant_message", text: prefix });
@@ -93,7 +94,7 @@ check(parse(text).blocks[0].inline[0].text === "Entity & 🐈 © 中文", "Entit
   check(transformer.transform({ item: { type: "assistant_message", text: text }, phase: "complete" }) === undefined, "Native fallback failed");
 });
 check(parse("") === null && parse("x".repeat(96001)) === null, "Input limits failed");
-check(parse(Array(33).fill("$$x$$").join("\\n\\n")) === null, "Formula limit failed");
+check(parse(Array(65).fill("$$x$$").join("\\n\\n")) === null, "Formula limit failed");
 check(commands.length === 2, "Missing native/Math actions");
 commands[0].onSelect(); commands[0].onSelect();
 check(removed.length === 1 && removed[0] === transformer, "Native action must remove only the transformer once");

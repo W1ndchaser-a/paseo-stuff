@@ -8,7 +8,7 @@ shared runtime or root-hoisted dependency tree.
 
 | Plugin | Directory | Status / important limits |
 | --- | --- | --- |
-| Math Renderer | [plugins/math-renderer](plugins/math-renderer) | Paseo 0.9 or later; block LaTeX after reply completion. Use native-reply mode for chat Find. Inline math and native mobile acceptance are not complete. |
+| Math Renderer | [plugins/math-renderer](plugins/math-renderer) | Paseo 0.9 or later; block and inline LaTeX after reply completion. Use native-reply mode to search formula source with chat Find. Native mobile acceptance is not complete. |
 | Readable Agent Activity | [plugins/agent-activity](plugins/agent-activity) | Tool cards need Full detail; before using Summary, choose "Activity: use native tool rows" in each client's Command Center. |
 | DeepSeek Harness | [plugins/deepseek-harness](plugins/deepseek-harness) | Paseo 0.11 or later. Provider adapter; requires a separately installed, compatible official DSH executable and credentials. |
 | MaKa | [plugins/maka](plugins/maka) | **Unmaintained since 2026-09-24.** Experimental provider for the official MaKa ACP CLI, last tested with MaKa dev39; newer MaKa releases are not tracked. Its `<0.10.0` range makes Paseo 0.10 reject it. |

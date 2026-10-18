@@ -6,6 +6,7 @@ import { MAX_FORMULAS, MAX_TEXT } from "./contracts";
 
 export type Inline =
   | { kind: "text" | "code"; text: string }
+  | { kind: "math"; tex: string; raw: string }
   | { kind: "strong" | "em" | "strike"; children: Inline[] }
   | { kind: "link"; href: string; children: Inline[] };
 export type Block =
@@ -57,8 +58,11 @@ md.block.ruler.before("fence", "display_math", (state, start, end, silent) => {
   return true;
 }, { alt: ["paragraph", "reference", "blockquote", "list"] });
 
-// Inline math is not typeset in this milestone; preserve its delimiters verbatim.
-md.inline.ruler.before("escape", "inline_tex_source", (state, silent) => {
+// \(...\) and $...$ inside a paragraph become inline formulas. Like Pandoc, $ needs
+// no space just inside either delimiter and no digit after the closing $, so
+// prices stay text. Display delimiters mid-paragraph and unclosed TeX keep their
+// source verbatim, which also stops Markdown from rewriting underscores in it.
+md.inline.ruler.before("escape", "inline_math", (state, silent) => {
   const rest = state.src.slice(state.pos);
   const open = rest.startsWith("\\(") ? "\\(" : rest.startsWith("\\[") ? "\\[" : rest.startsWith("$$") ? "$$" : rest.startsWith("$") ? "$" : null;
   if (!open) return false;
@@ -66,7 +70,13 @@ md.inline.ruler.before("escape", "inline_tex_source", (state, silent) => {
   const at = unescapedIndex(rest, close, open.length);
   if (open.startsWith("$") && (at < 0 || /\s/.test(rest[open.length] ?? "") || /\s/.test(rest[at - 1] ?? ""))) return false;
   const length = at < 0 ? rest.length : at + close.length;
-  if (!silent) state.push("text", "", 0).content = rest.slice(0, length);
+  const tex = at < 0 ? "" : rest.slice(open.length, at).trim();
+  const formula = tex && (open === "\\(" || (open === "$" && !/\d/.test(rest[length] ?? "")));
+  if (!silent) {
+    const token = state.push(formula ? "math_inline" : "text", "", 0);
+    token.content = formula ? tex : rest.slice(0, length);
+    token.markup = rest.slice(0, length);
+  }
   state.pos += length;
   return true;
 });
@@ -94,6 +104,7 @@ function inline(tokens: Token[]): Inline[] {
       }
       else if (t.type === "softbreak" || t.type === "hardbreak") out.push({ kind: "text", text: "\n" });
       else if (t.type === "code_inline") out.push({ kind: "code", text: t.content });
+      else if (t.type === "math_inline") out.push({ kind: "math", tex: t.content, raw: t.markup });
       else if (t.type === "strong_open" || t.type === "em_open" || t.type === "s_open") {
         const kind = t.type === "strong_open" ? "strong" : t.type === "em_open" ? "em" : "strike";
         out.push({ kind, children: take(t.type.replace("_open", "_close")) });
@@ -106,6 +117,9 @@ function inline(tokens: Token[]): Inline[] {
     return out;
   }
   return take();
+}
+function inlineFormulas(items: Inline[]): number {
+  return items.reduce((n, item) => n + (item.kind === "math" ? 1 : "children" in item ? inlineFormulas(item.children) : 0), 0);
 }
 export function parseDocument(text: string): Document | null {
   if (!text || text.length > MAX_TEXT) return null;
@@ -121,8 +135,10 @@ export function parseDocument(text: string): Document | null {
         if (t.type === "paragraph_open" || t.type === "heading_open") {
           const content = tokens[i++];
           if (content?.type !== "inline") throw new Error("Unsupported paragraph");
+          const items = inline(content.children ?? []);
+          formulas += inlineFormulas(items);
           out.push({ kind: t.type === "paragraph_open" ? "paragraph" : "heading",
-            inline: inline(content.children ?? []), level: Number(t.tag.slice(1)) || 0 });
+            inline: items, level: Number(t.tag.slice(1)) || 0 });
           if (tokens[i++]?.type !== t.type.replace("_open", "_close")) throw new Error("Unclosed block");
         } else if (t.type === "math_block" || (t.type === "fence" && t.info.trim() === "math" && closedFence(t, text))) {
           formulas++;

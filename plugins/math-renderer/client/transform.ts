@@ -7,7 +7,7 @@ export const transformMessage: PluginTimelineTransformerContribution<"assistant_
   // file link or size limit must not tear down an already interactive math card.
   // This also avoids parsing the whole document on every token update.
   if (phase === "streaming") return undefined;
-  if (!/(?:\$\$|\\\[|(?:`{3,}|~{3,})[ \t]*math\b)/.test(item.text)) return undefined;
+  if (!/(?:\$|\\[[(]|(?:`{3,}|~{3,})[ \t]*math\b)/.test(item.text)) return undefined;
   const parsed = parseDocument(item.text);
   if (!parsed?.formulas) return undefined;
   // Let the host derive source identity; explicit IDs are plugin-global.

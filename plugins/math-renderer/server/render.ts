@@ -64,13 +64,16 @@ export function createMathRenderer({ maxEntries = 128, maxBytes = 8_000_000 } = 
           formatError: () => { throw new Error("Invalid TeX"); } }),
         OutputJax: new SVG({ fontCache: "none", internalSpeechTitles: false }),
       });
-      const node = document.convert(input.tex, { display: true, em: input.fontSize, ex: input.fontSize / 2, containerWidth: 1200 });
+      const node = document.convert(input.tex, { display: input.display, em: input.fontSize, ex: input.fontSize / 2, containerWidth: 1200 });
       const svg = adaptor.tags(node, "svg")[0];
       if (!svg || adaptor.tags(svg, "text").length || adaptor.tags(svg, "image").length || adaptor.tags(svg, "a").length)
         throw new Error("Formula needs unsupported text, font or resource");
       const box = String(adaptor.getAttribute(svg, "viewBox")).split(/\s+/).map(Number);
       if (box.length !== 4 || box.some(n => !Number.isFinite(n))) throw new Error("Invalid equation bounds");
       const pad = 2000 / input.fontSize;
+      // MathJax lowers the SVG by its depth with vertical-align in ex; add the 2px padding.
+      const lowered = /vertical-align:\s*(-?[\d.]+)ex/.exec(String(adaptor.getAttribute(svg, "style") ?? ""));
+      const depth = Math.max(0, -Number(lowered?.[1] ?? 0)) * input.fontSize / 2 + 2;
       const width = Math.ceil(box[2] * input.fontSize / 1000 + 4);
       const height = Math.ceil(box[3] * input.fontSize / 1000 + 4);
       if (width <= 4 || height <= 4 || width > 2400 || height > 800 || width * height * input.scale ** 2 > 4_000_000)
@@ -88,7 +91,7 @@ export function createMathRenderer({ maxEntries = 128, maxBytes = 8_000_000 } = 
         try {
           const png = image.asPng();
           if (png.byteLength > 1_000_000) throw new Error("Formula image byte limit");
-          result = renderOutput.parse({ ok: true, uri: "data:image/png;base64," + Buffer.from(png).toString("base64"), width, height });
+          result = renderOutput.parse({ ok: true, uri: "data:image/png;base64," + Buffer.from(png).toString("base64"), width, height, depth });
         } finally { image.free(); }
       } finally { raster.free(); }
       remember(key, result);

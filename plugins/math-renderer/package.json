@@ -1,9 +1,9 @@
 {
   "name": "paseo-math-renderer",
-  "version": "0.1.0-beta.4",
+  "version": "0.1.0-beta.5",
   "private": true,
   "type": "module",
-  "description": "Render block LaTeX in completed Paseo replies, with source viewing, copying and native-reply mode. Experimental beta for Paseo 0.9.0-beta.1 or newer.",
+  "description": "Render block and inline LaTeX in completed Paseo replies, with source viewing, copying and native-reply mode. Experimental beta for Paseo 0.9.0-beta.1 or newer.",
   "license": "MIT",
   "author": "geoqiao",
   "repository": {

@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { parseDocument, type Block } from "../shared/markdown";
+import { parseDocument, type Block, type Inline } from "../shared/markdown";
 import { transformMessage } from "../client/transform";
 import { createMathRenderer } from "../server/render";
 
@@ -9,6 +9,10 @@ import { createMathRenderer } from "../server/render";
 const sample = readFileSync(new URL("./fixtures/synthetic/math-live-a.md", import.meta.url), "utf8").trimEnd();
 function formulas(blocks: Block[]): Extract<Block, { kind: "math" }>[] {
   return blocks.flatMap(block => block.kind === "math" ? [block] : "children" in block ? formulas(block.children) : []);
+}
+function inlineFormulas(blocks: Block[]): string[] {
+  const walk = (items: Inline[]): string[] => items.flatMap(item => item.kind === "math" ? [item.tex] : "children" in item ? walk(item.children) : []);
+  return blocks.flatMap(block => "inline" in block ? walk(block.inline) : "children" in block ? inlineFormulas(block.children) : []);
 }
 describe("live-session regressions", () => {
   it("typesets a multivariate normal density with bold Greek symbols, preserving source", async () => {
@@ -36,7 +40,7 @@ $$`;
     const renderer = createMathRenderer();
     try {
       for (const color of ["#eeeeee", "#111111"]) {
-        const result = await renderer.render({ tex: block.tex, color, fontSize: 18, scale: 3 });
+        const result = await renderer.render({ tex: block.tex, color, fontSize: 18, scale: 3, display: true });
         expect(result.ok).toBe(true);
         if (result.ok) {
           const png = Buffer.from(result.uri.split(",")[1], "base64");
@@ -47,13 +51,17 @@ $$`;
       }
     } finally { renderer.dispose(); }
   });
-  it("typesets all six formulas from mixed model output, including wrapped math fence", async () => {
+  it("typesets all six display and 21 inline formulas from mixed model output, including wrapped math fence", async () => {
     const doc = parseDocument(sample)!;
-    expect(doc.formulas).toBe(6);
+    expect(doc.formulas).toBe(27);
+    expect(formulas(doc.blocks)).toHaveLength(6);
     const renderer = createMathRenderer();
     try {
       for (const block of formulas(doc.blocks)) {
-        expect((await renderer.render({ tex: block.tex, color: "#eeeeee", fontSize: 18, scale: 2 })).ok, block.tex).toBe(true);
+        expect((await renderer.render({ tex: block.tex, color: "#eeeeee", fontSize: 18, scale: 2, display: true })).ok, block.tex).toBe(true);
+      }
+      for (const tex of inlineFormulas(doc.blocks)) {
+        expect((await renderer.render({ tex, color: "#eeeeee", fontSize: 15, scale: 2, display: false })).ok, tex).toBe(true);
       }
       expect(JSON.stringify(doc)).toContain("$$not_math$$");
       expect(JSON.stringify(doc)).toContain("END-MATH-LIVE-A");
@@ -83,12 +91,13 @@ $$`;
   it("isolates a deliberately invalid formula among five valid nested/wide formulas", async () => {
     const text = readFileSync(new URL("./fixtures/synthetic/math-live-b.md", import.meta.url), "utf8").trimEnd();
     const doc = parseDocument(text)!;
-    expect(doc.formulas).toBe(6);
+    expect(doc.formulas).toBe(9);
+    expect(inlineFormulas(doc.blocks)).toEqual(["x_i", "5", "10"]);
     const renderer = createMathRenderer();
     try {
       const results = [];
       for (const block of formulas(doc.blocks)) {
-        results.push(await renderer.render({ tex: block.tex, color: "#eeeeee", fontSize: 18, scale: 2 }));
+        results.push(await renderer.render({ tex: block.tex, color: "#eeeeee", fontSize: 18, scale: 2, display: true }));
       }
       expect(results.map(result => result.ok)).toEqual([true, true, true, true, false, true]);
       expect(results[3]).toMatchObject({ width: 1591 });
