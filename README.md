@@ -114,16 +114,16 @@ Paseo's [plugin registry](https://github.com/getpaseo/plugins) (browsable at
 
 | Registry ID | Plugin directory | Pinned artifact |
 | --- | --- | --- |
-| `geoqiao/agent-activity` | `plugins/agent-activity` | Git commit `5d8725c` (0.1.0-beta.9) |
+| `geoqiao/agent-activity` | `plugins/agent-activity` | npm `paseo-readable-agent-activity`; the version follows the registry's bump PRs |
 | `geoqiao/deepseek-harness` | `plugins/deepseek-harness` | npm `paseo-deepseek-harness`; the version follows the registry's bump PRs |
-| `geoqiao/math-renderer` | `plugins/math-renderer` | Git commit `5d8725c` (0.1.0-beta.4) |
+| `geoqiao/math-renderer` | `plugins/math-renderer` | npm `paseo-math-renderer`; the version follows the registry's bump PRs |
 | `geoqiao/maka` | `plugins/maka` | Git commit `abc4d96` (0.1.0-beta.4, unmaintained) |
 
 The registry opens a bump PR by itself for a new npm version. A Git record changes
-only after a new submission or a PR against that record, so a release of a
-Git-distributed plugin needs that step. Math Renderer and Readable Agent Activity
-are published on npm from 0.1.0-beta.6 and 0.1.0-beta.11, but their records stay Git
-records until a PR against each record switches it to the npm package. Each maintained plugin keeps an
+only after a new submission or a PR against that record. Readable Agent Activity
+and Math Renderer moved to npm records in
+[getpaseo/plugins#666](https://github.com/getpaseo/plugins/pull/666), starting at
+0.1.0-beta.11 and 0.1.0-beta.6. Each maintained plugin keeps an
 `OVERVIEW.md` beside its manifest; the registry shows it on the listing page once a
 record pins a commit or package that contains it, replacing the overview the
 registry wrote during the import.
