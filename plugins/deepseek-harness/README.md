@@ -20,7 +20,7 @@ patched Paseo app is required.
 > **DSH 0.1.5-rc.1 or newer**. Newer DSH releases are accepted without an
 > exact-version check. Tested: **0.1.5-rc.1**, **0.1.5-rc.2**, **0.1.6-alpha.2**,
 > **0.1.7-alpha.2**, **0.1.7-rc.1**, **0.1.7-rc.2**, **0.2.0-rc.1**,
-> **0.2.0-rc.2** and **0.2.1-rc.2**. The executable must be able to run
+> **0.2.0-rc.2**, **0.2.1-rc.2** and **0.2.1-rc.3**. The executable must be able to run
 > `dsh --profile acp --version` and `dsh --profile acp`.
 > On Paseo 0.8 to 0.10, install beta.12 instead:
 > `paseo plugin add geoqiao/paseo-stuff:plugins/deepseek-harness --ref deepseek-harness-v0.1.0-beta.12`.
@@ -47,10 +47,10 @@ patched Paseo app is required.
 
 Install a verified official DSH version **on the daemon machine**, then check
 that the daemon can find the executable on its PATH. The npm `latest` dist-tag
-currently resolves to `0.2.0-rc.2` and `next` to `0.2.1-rc.2`; both are tested:
+currently resolves to `0.2.1-rc.2` and `next` to `0.2.1-rc.3`; both are tested:
 
 ~~~sh
-npm install -g --ignore-scripts @deepseek-ai/dsh@0.2.0-rc.2
+npm install -g --ignore-scripts @deepseek-ai/dsh@0.2.1-rc.2
 dsh --version
 ~~~
 
@@ -98,8 +98,8 @@ are preserved for the session.
 The verified runtime compositions use CLI `0.1.5-rc.1` or `0.1.5-rc.2` with
 `@deepseek-ai/dsh-acp` `0.1.5-rc.2`, CLI `0.1.6-alpha.2` with
 `@deepseek-ai/dsh-acp` `0.1.6-alpha.2`, the isolated published CLI/ACP
-closures `0.1.7-alpha.2`, `0.1.7-rc.1`, `0.1.7-rc.2`, `0.2.0-rc.1` and
-`0.2.1-rc.2`, and the global CLI `0.2.0-rc.2`; all use
+closures `0.1.7-alpha.2`, `0.1.7-rc.1`, `0.1.7-rc.2`, `0.2.0-rc.1`,
+`0.2.1-rc.2` and `0.2.1-rc.3`, and the global CLI `0.2.0-rc.2`; all use
 ACP SDK `1.4.0`. The plugin probes the CLI version and rejects only releases
 older than `0.1.5-rc.1` or output it cannot parse. Newer releases are accepted
 but untested until listed here; ACP behaviour follows the capabilities DSH
@@ -150,8 +150,10 @@ adds bounded readable previews; **that separate renderer** requires Full detail.
 **Displayed history after a reload:** when Paseo reopens a session, after
 `paseo agent reload` or a daemon restart, it rebuilds the timeline from the
 provider's replay and deletes the timeline it stored. DSH does not replay, so
-on Paseo 0.12.0-beta.2 the agent keeps its DSH context but shows an empty
-timeline. Reloading the plugin keeps the timeline.
+on Paseo 0.12.0-beta.2 and 0.13.0 the agent keeps its DSH context but shows an
+empty timeline. Paseo 0.13.0 restores history that an ACP agent replays during
+`session/load` (getpaseo/paseo#7717); DSH resumes with `session/resume`, which
+replays nothing, so that fix does not apply. Reloading the plugin keeps the timeline.
 
 **Known side effects and boundaries:** catalog discovery uses ACP `session/new`
 and can leave empty sessions in DSH's native session list. DSH profile settings
@@ -190,7 +192,9 @@ paseo plugin ls --host <your-host>
 ~~~
 
 Paseo 0.11 reads a bare `owner/name` source as a registry ID, so the `git:`
-prefix is required.
+prefix is required. If the registry install fails with "npm artifact changed
+since review", the daemon's npm uses a registry mirror; see
+[the fix](https://github.com/geoqiao/paseo-stuff#if-a-registry-install-fails-with-npm-artifact-changed-since-review).
 
 Select **DeepSeek Harness** when creating an agent in Paseo. Model and thinking
 choices come from the installed DSH profile. Plugins and DSH tools are trusted,
@@ -202,7 +206,8 @@ the resolved launch, the process helpers, provider `status()` and usage
 sources. Under Paseo's requirements contract, a minimum-only range admits
 0.11.0 and every later release, including prereleases and future breaking
 releases; it is not a promise that untested versions work. Beta.13 is tested
-with the 0.11.4 SDK and on live 0.11.4 and 0.12.0-beta.2 daemons on macOS. Do not restart the daemon for this plugin. Follow Paseo's
+with the 0.11.4 SDK and on live 0.11.4, 0.12.0-beta.2 and 0.13.0 daemons on
+macOS; its checks also pass with the 0.13.0 SDK. Do not restart the daemon for this plugin. Follow Paseo's
 global plugin-enable and per-installation
 enable/disable rules; an existing disabled installation should remain
 disabled unless the user explicitly enables it.

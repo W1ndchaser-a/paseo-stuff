@@ -1,5 +1,34 @@
 # Verification and limits
 
+## Beta.13 — Paseo 0.13.0 and DSH 0.2.1-rc.3 (2026-10-26)
+
+- `npm run check` on Node 24.18.0 with the **0.13.0** client, plugin and protocol
+  packages installed without saving: typecheck, lint with zero warnings/errors and
+  **82 tests / 4 files**.
+- **Live, isolated Paseo 0.13.0 daemon on macOS** (temporary home, port 6811, relay
+  off): `paseo plugin add geoqiao/deepseek-harness` resolved the registry record to
+  npm `paseo-deepseek-harness@0.1.0-beta.13`, status `running`.
+  - Global DSH **0.2.0-rc.2**: a real turn ran `ls -la` and read `notes.txt` with
+    tools and answered the marker.
+  - DSH **0.2.1-rc.3** (npm `next`), installed under `/tmp` and selected with
+    `agents.providers.deepseek-harness.command`, with its own `DSH_HOME`: provider
+    `available`; `ps` showed that executable with `--profile acp`. A real turn ran
+    `ls -la`, read `secret.txt` and answered the codeword. After
+    `paseo agent reload` the timeline held 0 items and the agent recalled a number
+    from the first turn.
+  - In the 0.13.0 web client (`app-dist` served locally), the agent's tool rows and
+    replies rendered; the browser console showed no plugin errors.
+- **npm mirror (issue #35):** a second isolated 0.13.0 daemon whose npm used
+  `registry.npmmirror.com` failed `paseo plugin add geoqiao/deepseek-harness` with
+  `npm artifact changed since review`; `geoqiao/math-renderer` failed the same way.
+  npm rewrote the lockfile `resolved` URL to the mirror host while `version` and
+  `integrity` matched the registry record, and Paseo compares all three. With
+  `npm_config_replace_registry_host=never` both `geoqiao/deepseek-harness` and
+  `geoqiao/agent-activity` installed and ran. `npm:paseo-deepseek-harness` installed
+  and ran with the mirror unchanged. Paseo 0.13.0 has the same comparison as 0.12.0.
+- **Not verified:** Windows, the desktop app, native mobile and the Usage panel on
+  0.13.0.
+
 ## Beta.13 — Paseo 0.11 launch, status and usage (2026-10-18)
 
 - `npm run check` on Node 24.18.0 with SDK **0.11.4**: typecheck, lint with

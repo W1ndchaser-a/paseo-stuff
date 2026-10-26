@@ -16,9 +16,9 @@ shared runtime or root-hoisted dependency tree.
 
 Activity **0.1.0-beta.11** and Math Renderer **0.1.0-beta.6** declare minimum-only
 Paseo requirements and are checked against the Paseo **0.9.2** SDK and host pipeline
-source, and their checks also pass with the **0.11.4** SDK.
+source, and their checks also pass with the **0.11.4** and **0.13.0** SDKs.
 DeepSeek Harness **0.1.0-beta.13** requires Paseo **0.11.0** and is checked against
-the **0.11.4** SDK. A minimum is not
+the **0.11.4** SDK; its checks also pass with the **0.13.0** SDK. A minimum is not
 a promise about later releases; each plugin's verification record lists what was
 tested. MaKa **0.1.0-beta.4** (final, unmaintained) stays limited to Paseo 0.9.
 Pet remains on its existing 0.8 support range (0.1.1, paused; not migrated to 0.9).
@@ -36,6 +36,24 @@ example Math Renderer:
 ```sh
 paseo plugin add geoqiao/math-renderer --host <host:port>
 ```
+
+### If a registry install fails with "npm artifact changed since review"
+
+This error means the daemon's npm uses a registry mirror, such as
+`registry.npmmirror.com`. A registry record pins the `registry.npmjs.org` tarball URL.
+npm replaces that host with the mirror, and Paseo 0.12.0 and 0.13.0 reject the install
+because the URL differs, even though the package integrity is the same.
+
+Run this command as the user that runs the daemon, then install again:
+
+```sh
+npm config set replace-registry-host never
+```
+
+npm then downloads pinned `registry.npmjs.org` tarballs from npmjs and keeps the mirror
+for other packages. You can also install the npm package directly, for example
+`paseo plugin add npm:paseo-deepseek-harness --host <host:port>`. Both fixes were
+tested on a Paseo 0.13.0 daemon whose npm used `registry.npmmirror.com`.
 
 Math Renderer, Readable Agent Activity and DeepSeek Harness are also published on npm
 as `paseo-math-renderer`, `paseo-readable-agent-activity` and

@@ -79,7 +79,8 @@ Virtual-list remounts reset local disclosure state.
 
 **Paseo 0.8.0 or later · tool cards need Full detail · experimental beta.**
 Beta.9 passes its checks with SDK 0.9.2, 0.10.1 and 0.11.2 and pinned 0.8.0/0.9.2 host
-fixtures. No live 0.11 daemon was tested. Beta.8 rendered live on a 0.10.0-beta.1 daemon in the hosted web client with
+fixtures; beta.11 also passes with SDK 0.13.0. Beta.11, installed from the registry,
+rendered tool cards live on a 0.13.0 daemon in the 0.13.0 web client. Beta.8 rendered live on a 0.10.0-beta.1 daemon in the hosted web client with
 Full detail. The manifest sets
 only a minimum, `>=0.8.0`, as Paseo recommends; later releases are not tested.
 
@@ -147,6 +148,9 @@ paseo plugin add git:geoqiao/paseo-stuff:plugins/agent-activity --ref readable-a
 
 Paseo 0.11 reads a bare `owner/name` source as a registry ID, so the `git:` prefix is
 required there. Paseo CLIs before 0.11 take the same Git source without the prefix.
+If the registry install fails with "npm artifact changed since review", the daemon's
+npm uses a registry mirror; see
+[the fix](https://github.com/geoqiao/paseo-stuff#if-a-registry-install-fails-with-npm-artifact-changed-since-review).
 
 Installation enables the plugin with tool cards active. Review its source/trust
 requirements, then use Full detail or switch to native tool rows first. Do not create a duplicate installation. Existing installations

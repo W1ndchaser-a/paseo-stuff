@@ -1,5 +1,22 @@
 # Verification scope
 
+## Beta.6 — Paseo 0.13.0 registry install (2026-10-26)
+
+- `npm run check` on Node 24.18.0 with the **0.13.0** client, plugin and protocol
+  packages installed without saving: typecheck, zero lint warnings/errors and
+  **6 files / 82 tests**.
+- Isolated Paseo **0.13.0** daemon (temporary home, port 6811, relay off):
+  `paseo plugin add geoqiao/math-renderer` resolved the registry record to npm
+  `paseo-math-renderer@0.1.0-beta.6`, status `running`.
+- In the 0.13.0 web client (`app-dist` served locally), a DeepSeek Harness reply
+  rendered inline `$E = mc^2$` and the display integral as images, with
+  Show LaTeX and Copy LaTeX. The browser console showed no plugin errors.
+- With a daemon whose npm used `registry.npmmirror.com`, the registry install fails
+  with "npm artifact changed since review" (issue #35); `npm:paseo-math-renderer`
+  installed with the mirror unchanged. See the root README.
+- **Not verified:** the desktop app, native iOS/Android, light/dark switching and Find
+  on 0.13.0.
+
 ## Beta.6 — npm package (2026-10-18)
 
 - `npm run check` passed on Node **24.18.0** with the pinned **0.9.2** packages:

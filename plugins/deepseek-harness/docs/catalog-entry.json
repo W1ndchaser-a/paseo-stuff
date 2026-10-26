@@ -7,7 +7,7 @@
   ],
   "caveats": [
     "Experimental: Paseo >=0.11.0 (SDK-tested with 0.11.4), daemon Node >=22.19, and a separately installed official DSH with credentials.",
-    "Requires DSH 0.1.5-rc.1 or newer (tested through 0.2.1-rc.2); plugins and DSH tools are trusted, unsandboxed code.",
+    "Requires DSH 0.1.5-rc.1 or newer (tested through 0.2.1-rc.3); plugins and DSH tools are trusted, unsandboxed code.",
     "Resumes native DSH context without transcript replay; the displayed timeline is empty after an agent reload or daemon restart.",
     "The Usage panel reads the DeepSeek API key the way DSH does and sends it only to DeepSeek's balance endpoint.",
     "No raw token deltas, slash commands, steering, plans or terminal UI; real vision/MCP services are untested.",

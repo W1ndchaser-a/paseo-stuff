@@ -7,7 +7,9 @@ text; tap one to see its source. No extra panel or duplicate message toolbar.
 > **Experimental beta — 0.1.0-beta.6.** Requires Paseo app and daemon
 > **0.9.0-beta.1 or newer**. Checked offline against Paseo 0.9.2 and 0.10.0-beta.1; the
 > checks also pass with the 0.11.4 SDK. Beta.5 was tested live on a 0.12.0-beta.2 daemon
-> in the hosted web client; the beta.6 npm package was loaded on a 0.12.0-beta.3 daemon. Replies stay native while streaming; supported formulas
+> in the hosted web client; the beta.6 npm package was loaded on a 0.12.0-beta.3 daemon
+> and, from the registry, rendered on a 0.13.0 daemon in the 0.13.0 web client, whose SDK
+> also passes the checks. Replies stay native while streaming; supported formulas
 > render after completion. Native iOS/Android acceptance and complete native Markdown
 > parity are not finished. Read the limitations before enabling this trusted plugin.
 
@@ -47,6 +49,9 @@ paseo plugin add git:geoqiao/paseo-stuff:plugins/math-renderer --ref math-render
 
 Paseo 0.11 reads a bare `owner/name` source as a registry ID, so the `git:` prefix is
 required there. Paseo CLIs before 0.11 take the same Git source without the prefix.
+If the registry install fails with "npm artifact changed since review", the daemon's
+npm uses a registry mirror; see
+[the fix](https://github.com/geoqiao/paseo-stuff#if-a-registry-install-fails-with-npm-artifact-changed-since-review).
 
 The manifest ID is `math-renderer`. This directory is independently installable;
 it does not import any sibling plugin or depend on root-installed packages.

@@ -1,5 +1,22 @@
 # Verification and remaining gaps
 
+## Beta.11 — Paseo 0.13.0 registry install (2026-10-26)
+
+- `npm run check` on Node 24.18.0 with the **0.13.0** client, plugin and protocol
+  packages installed without saving: typecheck, lint with no warnings/errors,
+  **8 files / 275 tests**.
+- Isolated Paseo **0.13.0** daemon (temporary home, port 6811, relay off):
+  `paseo plugin add geoqiao/agent-activity` resolved the registry record to npm
+  `paseo-readable-agent-activity@0.1.0-beta.11`, status `running`.
+- In the 0.13.0 web client (`app-dist` served locally), a DeepSeek Harness turn ran
+  `ls -la` and read `notes.txt`. The collapsed cards showed `bash ls -la` and
+  `read <absolute path>`; expanding `bash` showed Input and the real Output. The
+  browser console showed no plugin errors.
+- With a daemon whose npm used `registry.npmmirror.com`, the registry install fails
+  with "npm artifact changed since review" (issue #35); with
+  `npm_config_replace_registry_host=never` it installed and ran. See the root README.
+- **Not verified:** the desktop app, native iOS/Android and Summary.
+
 ## Beta.11 — npm package (2026-10-18)
 
 - `npm run check` on Node **24.18.0** with the pinned SDK **0.9.2**: typecheck, lint
