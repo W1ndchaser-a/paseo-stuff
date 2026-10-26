@@ -1,5 +1,9 @@
 import type { ChildProcess } from "node:child_process";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
+import { homedir } from "node:os";
+import { join } from "node:path";
 import { Readable, Writable } from "node:stream";
+import { zstdDecompressSync } from "node:zlib";
 import { ndJsonStream, type AnyMessage } from "@agentclientprotocol/sdk";
 import { spawnProcess, terminateProcess } from "@getpaseo/plugin/server";
 import type {
@@ -48,6 +52,18 @@ export interface AcpStreamOwner {
 export interface ManagedAcpStream extends AcpStream {
   close(reason?: unknown): Promise<void>;
   fail(error: unknown): void;
+}
+
+/**
+ * Where to find the DSH session store for synthesizing resume replay. DSH
+ * resumes a session's context without replaying its transcript, so on a Paseo
+ * resume (history: "replay") the timeline would otherwise come back empty. We
+ * read the frozen session.v4 store directly and inject the history as ACP
+ * session/update notifications before the resume response.
+ */
+export interface ReplayContext {
+  cwd: string;
+  env: Readonly<Record<string, string>>;
 }
 
 type ProtocolState =
@@ -186,11 +202,16 @@ export async function createDshAcpStream(
     Readable.toWeb(child.stdout),
   ) as unknown as AcpStream;
   let resource: ConnectorResource | undefined;
-  const managed = createAcpCompatibilityStream(raw, owner, () => {
-    if (resource) {
-      context.resources.delete(resource);
-    }
-  });
+  const managed = createAcpCompatibilityStream(
+    raw,
+    owner,
+    () => {
+      if (resource) {
+        context.resources.delete(resource);
+      }
+    },
+    { cwd, env },
+  );
   resource = {
     close: (reason) => managed.close(reason),
   };
@@ -221,6 +242,7 @@ export function createAcpCompatibilityStream(
   source: AcpStream,
   owner: AcpStreamOwner,
   onClosed: () => void = () => undefined,
+  replayContext?: ReplayContext,
 ): ManagedAcpStream {
   const reader = source.readable.getReader();
   const writer = source.writable.getWriter();
@@ -228,6 +250,11 @@ export function createAcpCompatibilityStream(
   let state: ProtocolState = "awaiting-initialize";
   let persistenceMode: PersistenceMode = "none";
   let initializeId: string | number | null | undefined;
+  // A session/load translated to session/resume whose transcript we will inject
+  // inbound, right before DSH's resume response, so Paseo's replay window sees it.
+  let pendingResume:
+    | { id: string | number | null; frames: Promise<AcpStreamMessage[]> }
+    | undefined;
   let readableController:
     | ReadableStreamDefaultController<AcpStreamMessage>
     | undefined;
@@ -291,6 +318,21 @@ export function createAcpCompatibilityStream(
         }
 
         const message = assertAcpStreamMessage(next.value as AnyMessage);
+        if (
+          pendingResume &&
+          isResponseFrame(message) &&
+          message.id === pendingResume.id
+        ) {
+          const { frames } = pendingResume;
+          pendingResume = undefined;
+          // Never let a replay failure block the resume response itself.
+          const replay = await frames.catch(() => [] as AcpStreamMessage[]);
+          for (const frame of replay) {
+            controller.enqueue(frame);
+          }
+          controller.enqueue(transformInbound(message));
+          return;
+        }
         controller.enqueue(transformInbound(message));
       } catch (error) {
         fail(error);
@@ -374,6 +416,18 @@ export function createAcpCompatibilityStream(
       throw new Error(
         "DeepSeek Harness ACP received an invalid session/load request",
       );
+    }
+
+    if (replayContext) {
+      const sessionId = (messageRecord.params as RecordValue).sessionId;
+      if (typeof sessionId === "string" && sessionId.length > 0) {
+        pendingResume = {
+          id: message.id,
+          frames: buildResumeReplayFrames(sessionId, replayContext).catch(
+            () => [] as AcpStreamMessage[],
+          ),
+        };
+      }
     }
 
     return {
@@ -557,6 +611,323 @@ function projectToolOutput(message: AcpStreamMessage): AcpStreamMessage {
       },
     },
   } as AcpStreamMessage;
+}
+
+// --- DSH session resume replay -------------------------------------------
+//
+// DSH's ACP advertises session/resume but not transcript replay: resuming
+// restores the model's context without re-emitting the conversation. Paseo opens
+// a resumed agent with history "replay" and expects session/update chunks, so
+// without this the timeline comes back empty while the model still has context.
+// We read DSH's own session.v4 store (frozen alongside the pinned DSH build) and
+// reconstruct the transcript as ACP session/update notifications. Any failure
+// degrades to the previous behaviour (empty timeline) rather than breaking resume.
+
+interface ReplayBlock {
+  type: string;
+  text: string;
+}
+
+export function resolveDshHome(env: Readonly<Record<string, string>>): string {
+  return env.DSH_HOME || process.env.DSH_HOME || join(homedir(), ".dsh");
+}
+
+/** Sessions live under <home>/sessions/<cwd-key>/<sessionId>/; the id is unique,
+ * so we scan the cwd-key dirs rather than reproducing DSH's path encoding. */
+export function locateDshSessionFile(
+  home: string,
+  sessionId: string,
+): string | undefined {
+  const sessionsDir = join(home, "sessions");
+  let entries: string[];
+  try {
+    entries = readdirSync(sessionsDir);
+  } catch {
+    return undefined;
+  }
+  for (const key of entries) {
+    const file = join(sessionsDir, key, sessionId, "session.v4.jsonl.zstd");
+    if (existsSync(file)) {
+      return file;
+    }
+  }
+  return undefined;
+}
+
+export function decodeDshSessionRecords(bytes: Buffer): RecordValue[] {
+  const text = decodeConcatenatedZstd(bytes).toString("utf8");
+  const records: RecordValue[] = [];
+  for (const line of text.split("\n")) {
+    const trimmed = line.trim();
+    if (!trimmed) {
+      continue;
+    }
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(trimmed);
+    } catch {
+      continue;
+    }
+    if (isRecord(parsed)) {
+      records.push(parsed);
+    }
+  }
+  return records;
+}
+
+const ZSTD_MAGIC = 0xfd2fb528;
+const ZSTD_SKIPPABLE_MAGIC = 0x184d2a50;
+const ZSTD_SKIPPABLE_MASK = 0xfffffff0;
+
+/**
+ * DSH appends every record as its own zstd frame, so the store is a stream of
+ * concatenated frames. Node's one-shot and streaming decoders both stop after
+ * the first frame, so walk the frame headers (RFC 8878) and decode each frame.
+ */
+function decodeConcatenatedZstd(bytes: Buffer): Buffer {
+  const parts: Buffer[] = [];
+  let offset = 0;
+  while (offset + 4 <= bytes.length) {
+    const magic = bytes.readUInt32LE(offset);
+    if ((magic & ZSTD_SKIPPABLE_MASK) === ZSTD_SKIPPABLE_MAGIC) {
+      if (offset + 8 > bytes.length) {
+        break;
+      }
+      offset += 8 + bytes.readUInt32LE(offset + 4);
+      continue;
+    }
+    if (magic !== ZSTD_MAGIC) {
+      break;
+    }
+    const end = zstdFrameEnd(bytes, offset);
+    if (end <= offset || end > bytes.length) {
+      break;
+    }
+    parts.push(zstdDecompressSync(bytes.subarray(offset, end)));
+    offset = end;
+  }
+  if (parts.length === 0) {
+    // A format we could not walk still yields its first frame rather than nothing.
+    return zstdDecompressSync(bytes);
+  }
+  return Buffer.concat(parts);
+}
+
+/** Offset just past the zstd frame beginning at `start`, or -1 if malformed. */
+function zstdFrameEnd(bytes: Buffer, start: number): number {
+  let p = start + 4; // skip magic
+  if (p >= bytes.length) {
+    return -1;
+  }
+  const fhd = bytes[p];
+  p += 1;
+  const fcsFlag = fhd >> 6;
+  const singleSegment = (fhd >> 5) & 1;
+  const checksumFlag = (fhd >> 2) & 1;
+  const dictIdFlag = fhd & 3;
+  if (singleSegment === 0) {
+    p += 1; // Window_Descriptor
+  }
+  p += [0, 1, 2, 4][dictIdFlag]; // Dictionary_ID
+  p += fcsFlag === 0 ? singleSegment : [0, 2, 4, 8][fcsFlag]; // Frame_Content_Size
+  for (;;) {
+    if (p + 3 > bytes.length) {
+      return -1;
+    }
+    const header = bytes[p] | (bytes[p + 1] << 8) | (bytes[p + 2] << 16);
+    p += 3;
+    const blockType = (header >> 1) & 3;
+    const blockSize = header >> 3;
+    if (blockType === 1) {
+      p += 1; // RLE block: a single byte of content
+    } else if (blockType === 0 || blockType === 2) {
+      p += blockSize; // Raw or Compressed block
+    } else {
+      return -1; // Reserved block type
+    }
+    if (header & 1) {
+      break; // Last_Block
+    }
+  }
+  if (checksumFlag) {
+    p += 4; // Content_Checksum
+  }
+  return p;
+}
+
+/** Map decoded DSH v4 records to ordered ACP session/update notification frames.
+ * Pure: no filesystem access, so it is unit-testable against fixtures. */
+export function dshRecordsToReplayFrames(
+  records: RecordValue[],
+  sessionId: string,
+): AcpStreamMessage[] {
+  const sorted = [...records].sort(
+    (a, b) => replayNum(a.seq) - replayNum(b.seq),
+  );
+
+  const results = new Map<string, { text: string; isError: boolean }>();
+  for (const record of sorted) {
+    if (record.type !== "tool/result") {
+      continue;
+    }
+    const data = replayRecord(record.data);
+    const message = replayRecord(data.message);
+    const callId =
+      replayStr(message.toolCallId) ??
+      replayStr(replayRecord(message.source).callId);
+    if (!callId) {
+      continue;
+    }
+    results.set(callId, {
+      text: replayText(message.content),
+      isError: message.isError === true,
+    });
+  }
+
+  const frames: AcpStreamMessage[] = [];
+  const push = (update: RecordValue): void => {
+    frames.push(replayFrame(sessionId, update));
+  };
+
+  for (const record of sorted) {
+    const type = replayStr(record.type);
+    const data = replayRecord(record.data);
+    if (type === "user/message") {
+      if (replayStr(data.role) !== "user") {
+        continue;
+      }
+      const messageId = replayStr(data.id);
+      for (const block of replayBlocks(data.content)) {
+        if (block.type !== "text" || !block.text) {
+          continue;
+        }
+        push({
+          sessionUpdate: "user_message_chunk",
+          content: { type: "text", text: block.text },
+          ...(messageId ? { messageId } : {}),
+        });
+      }
+    } else if (type === "assistant/message") {
+      const message = replayRecord(data.message);
+      const messageId = replayStr(message.id);
+      for (const block of replayBlocks(message.content)) {
+        if (!block.text) {
+          continue;
+        }
+        if (block.type === "reasoning" || block.type === "thinking") {
+          // Paseo keys a reasoning item by messageId; DSH reuses the answer's id
+          // for both, so disambiguate the thought exactly as projectThoughtMessageId.
+          push({
+            sessionUpdate: "agent_thought_chunk",
+            content: { type: "text", text: block.text },
+            ...(messageId ? { messageId: `${messageId}:thought` } : {}),
+          });
+        } else if (block.type === "text") {
+          push({
+            sessionUpdate: "agent_message_chunk",
+            content: { type: "text", text: block.text },
+            ...(messageId ? { messageId } : {}),
+          });
+        }
+      }
+    } else if (type === "tool/call") {
+      const callId = replayStr(data.callId);
+      if (!callId) {
+        continue;
+      }
+      const name = replayStr(data.name) ?? "tool";
+      const result = results.get(callId);
+      const content = result
+        ? [{ type: "content", content: { type: "text", text: result.text } }]
+        : [];
+      push({
+        sessionUpdate: "tool_call",
+        toolCallId: callId,
+        name,
+        title: name,
+        status: result ? (result.isError ? "failed" : "completed") : "completed",
+        rawInput: replayParseInput(data.arguments),
+        content,
+        rawOutput: { content },
+      });
+    }
+  }
+
+  return frames;
+}
+
+export async function buildResumeReplayFrames(
+  sessionId: string,
+  context: ReplayContext,
+): Promise<AcpStreamMessage[]> {
+  const home = resolveDshHome(context.env);
+  const file = locateDshSessionFile(home, sessionId);
+  if (!file) {
+    return [];
+  }
+  let bytes: Buffer;
+  try {
+    bytes = readFileSync(file);
+  } catch {
+    return [];
+  }
+  const records = decodeDshSessionRecords(bytes);
+  return dshRecordsToReplayFrames(records, sessionId);
+}
+
+function replayFrame(sessionId: string, update: RecordValue): AcpStreamMessage {
+  return {
+    jsonrpc: "2.0",
+    method: "session/update",
+    params: { sessionId, update },
+  } as unknown as AcpStreamMessage;
+}
+
+function replayRecord(value: unknown): RecordValue {
+  return isRecord(value) ? value : {};
+}
+
+function replayStr(value: unknown): string | undefined {
+  return typeof value === "string" && value.length > 0 ? value : undefined;
+}
+
+function replayNum(value: unknown): number {
+  return typeof value === "number" && Number.isFinite(value) ? value : 0;
+}
+
+function replayBlocks(value: unknown): ReplayBlock[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  const blocks: ReplayBlock[] = [];
+  for (const entry of value) {
+    if (!isRecord(entry)) {
+      continue;
+    }
+    blocks.push({
+      type: typeof entry.type === "string" ? entry.type : "",
+      text: typeof entry.text === "string" ? entry.text : "",
+    });
+  }
+  return blocks;
+}
+
+function replayText(value: unknown): string {
+  return replayBlocks(value)
+    .filter((block) => block.type === "text" || block.type === "")
+    .map((block) => block.text)
+    .join("");
+}
+
+function replayParseInput(value: unknown): unknown {
+  if (typeof value !== "string") {
+    return value ?? null;
+  }
+  try {
+    return JSON.parse(value);
+  } catch {
+    return value;
+  }
 }
 
 function assertAcpStreamMessage(value: AnyMessage): AcpStreamMessage {

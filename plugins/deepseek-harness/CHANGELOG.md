@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.1.1-replay.1 — 2026-10-26
+
+- Synthesize transcript replay on resume. DSH's ACP advertises `session/resume`
+  but does not replay a resumed session's updates, so reopening an agent (Paseo
+  opens with history `replay`) left the timeline empty even though the model kept
+  its context. The compatibility stream now reads DSH's own `session.v4` store
+  and injects the conversation as ACP `session/update` notifications before the
+  resume response. Any failure degrades to the previous empty-timeline behaviour
+  rather than breaking resume.
+- Decode DSH's concatenated-zstd session store by walking frame headers, since
+  DSH appends one zstd frame per record and one-shot decoders stop at the first.
+- Maintained fork (W1ndchaser-a/paseo-stuff) tracking upstream geoqiao/paseo-stuff.
+
 ## 0.1.0-beta.13 — 2026-10-18
 
 - **Requires Paseo 0.11.0 or later.** On Paseo 0.8 to 0.10, stay on beta.12.
