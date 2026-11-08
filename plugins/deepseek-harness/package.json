@@ -1,10 +1,10 @@
 {
   "name": "paseo-deepseek-harness",
-  "version": "0.1.0-beta.13",
-  "description": "DeepSeek Harness through its official ACP profile for Paseo 0.11 and later.",
+  "version": "0.1.2",
+  "description": "DeepSeek Harness daily and REA profiles with reliable ACP history for Paseo 0.15.3 and later.",
   "repository": {
     "type": "git",
-    "url": "https://github.com/geoqiao/paseo-stuff.git",
+    "url": "https://github.com/W1ndchaser-a/paseo-stuff.git",
     "directory": "plugins/deepseek-harness"
   },
   "homepage": "https://github.com/geoqiao/paseo-stuff/tree/main/plugins/deepseek-harness#readme",
@@ -25,9 +25,13 @@
     "OVERVIEW.md",
     "icon.svg",
     "index.server.ts",
+    "index.client.tsx",
+    "client/",
+    "shared/",
     "server/provider.ts",
     "server/dsh-compatibility.ts",
     "server/usage.ts",
+    "server/history-attachments.ts",
     "README.md",
     "LICENSE",
     "CHANGELOG.md",
@@ -40,7 +44,7 @@
   },
   "scripts": {
     "lint": "oxlint",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.client.json",
     "test": "vitest run --maxWorkers=2",
     "check": "npm run typecheck && npm run lint && npm test",
     "prepack": "node scripts/pack-manifest.mjs prepare",
@@ -52,11 +56,14 @@
     "zod": "4.4.3"
   },
   "devDependencies": {
-    "@getpaseo/client": "0.11.4",
-    "@getpaseo/plugin": "0.11.4",
-    "@getpaseo/protocol": "0.11.4",
+    "@getpaseo/client": "0.15.3",
+    "@getpaseo/plugin": "0.15.3",
+    "@getpaseo/protocol": "0.15.3",
     "@types/node": "^22.0.0",
+    "@types/react": "19.2.0",
     "oxlint": "1.61.0",
+    "react": "19.2.3",
+    "react-native": "0.86.3",
     "typescript": "^5.9.3",
     "vitest": "^4.1.6"
   }

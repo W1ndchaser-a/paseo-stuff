@@ -1,5 +1,15 @@
 import type { ChildProcess } from "node:child_process";
+import { createHash } from "node:crypto";
+import { createReadStream } from "node:fs";
+import { readdir, readFile, stat } from "node:fs/promises";
+import { homedir } from "node:os";
+import { basename, join } from "node:path";
 import { Readable, Writable } from "node:stream";
+import { StringDecoder } from "node:string_decoder";
+import { setImmediate as setImmediatePromise } from "node:timers/promises";
+import { pathToFileURL } from "node:url";
+import { promisify } from "node:util";
+import { zstdDecompress } from "node:zlib";
 import { ndJsonStream, type AnyMessage } from "@agentclientprotocol/sdk";
 import { spawnProcess, terminateProcess } from "@getpaseo/plugin/server";
 import type {
@@ -38,6 +48,18 @@ export interface DshConnectorContext {
   env: Readonly<Record<string, string>>;
   resources: Set<ConnectorResource>;
   isClosed?: () => boolean;
+  /**
+   * Surface a degraded history replay (missing store, corrupt records, missing
+   * attachments) as a user-visible notice. `sessionId` is DSH's native id; the
+   * provider remaps it to the Paseo session before emitting `session.notice`.
+   */
+  onReplayNotice?: (notice: ReplayNotice) => void;
+}
+
+/** One user-visible history-replay warning, scoped to DSH's native session id. */
+export interface ReplayNotice {
+  sessionId: string;
+  message: string;
 }
 
 export interface AcpStreamOwner {
@@ -48,6 +70,20 @@ export interface AcpStreamOwner {
 export interface ManagedAcpStream extends AcpStream {
   close(reason?: unknown): Promise<void>;
   fail(error: unknown): void;
+}
+
+/**
+ * Where to find the DSH session store for synthesizing resume replay. DSH
+ * resumes a session's context without replaying its transcript, so on a Paseo
+ * resume (history: "replay") the timeline would otherwise come back empty. We
+ * read the frozen session.v4 store directly and inject the history as ACP
+ * session/update notifications before the resume response.
+ */
+export interface ReplayContext {
+  cwd: string;
+  env: Readonly<Record<string, string>>;
+  /** Receives at most one summarized warning when replay is degraded. */
+  onReplayNotice?: (notice: ReplayNotice) => void;
 }
 
 type ProtocolState =
@@ -186,11 +222,16 @@ export async function createDshAcpStream(
     Readable.toWeb(child.stdout),
   ) as unknown as AcpStream;
   let resource: ConnectorResource | undefined;
-  const managed = createAcpCompatibilityStream(raw, owner, () => {
-    if (resource) {
-      context.resources.delete(resource);
-    }
-  });
+  const managed = createAcpCompatibilityStream(
+    raw,
+    owner,
+    () => {
+      if (resource) {
+        context.resources.delete(resource);
+      }
+    },
+    { cwd, env, onReplayNotice: context.onReplayNotice },
+  );
   resource = {
     close: (reason) => managed.close(reason),
   };
@@ -221,6 +262,7 @@ export function createAcpCompatibilityStream(
   source: AcpStream,
   owner: AcpStreamOwner,
   onClosed: () => void = () => undefined,
+  replayContext?: ReplayContext,
 ): ManagedAcpStream {
   const reader = source.readable.getReader();
   const writer = source.writable.getWriter();
@@ -228,6 +270,25 @@ export function createAcpCompatibilityStream(
   let state: ProtocolState = "awaiting-initialize";
   let persistenceMode: PersistenceMode = "none";
   let initializeId: string | number | null | undefined;
+  // A session/load translated to session/resume whose transcript we will inject
+  // inbound, right before DSH's resume response, so Paseo's replay window sees it.
+  // The transcript is an async generator, not a materialized array: the readable
+  // stream pulls one update at a time and the decoder applies backpressure.
+  let pendingResume:
+    | {
+        id: string | number | null;
+        sessionId: string;
+        frames: AsyncGenerator<AcpStreamMessage>;
+      }
+    | undefined;
+  let pendingReplay:
+    | {
+        sessionId: string;
+        iterator: AsyncGenerator<AcpStreamMessage>;
+        response: AcpStreamMessage;
+      }
+    | undefined;
+  const replayAbort = new AbortController();
   let readableController:
     | ReadableStreamDefaultController<AcpStreamMessage>
     | undefined;
@@ -238,11 +299,26 @@ export function createAcpCompatibilityStream(
     fail(error);
   });
 
+  const disposeReplay = (): void => {
+    const resume = pendingResume;
+    pendingResume = undefined;
+    if (resume) {
+      void resume.frames.return(undefined).catch(() => undefined);
+    }
+    const replay = pendingReplay;
+    pendingReplay = undefined;
+    if (replay) {
+      void replay.iterator.return(undefined).catch(() => undefined);
+    }
+  };
+
   const close = (reason?: unknown): Promise<void> => {
     if (closePromise) {
       return closePromise;
     }
     state = "closed";
+    replayAbort.abort(reason);
+    disposeReplay();
     closePromise = (async () => {
       const results = await Promise.allSettled([
         reader.cancel(reason),
@@ -281,6 +357,11 @@ export function createAcpCompatibilityStream(
     },
     async pull(controller) {
       try {
+        if (pendingReplay) {
+          await pumpReplay(controller);
+          return;
+        }
+
         const next = await reader.read();
         if (next.done) {
           await close(new Error("DeepSeek Harness ACP stdio reached EOF"));
@@ -291,6 +372,28 @@ export function createAcpCompatibilityStream(
         }
 
         const message = assertAcpStreamMessage(next.value as AnyMessage);
+        if (
+          pendingResume &&
+          isResponseFrame(message) &&
+          message.id === pendingResume.id
+        ) {
+          const resume = pendingResume;
+          pendingResume = undefined;
+          // A failed resume never injects history: Paseo must see the error, not
+          // a transcript for a session DSH refused to restore.
+          if (hasOwn(message, "error")) {
+            void resume.frames.return(undefined).catch(() => undefined);
+            controller.enqueue(transformInbound(message));
+            return;
+          }
+          pendingReplay = {
+            sessionId: resume.sessionId,
+            iterator: resume.frames,
+            response: message,
+          };
+          await pumpReplay(controller);
+          return;
+        }
         controller.enqueue(transformInbound(message));
       } catch (error) {
         fail(error);
@@ -318,6 +421,57 @@ export function createAcpCompatibilityStream(
       return close(reason);
     },
   });
+
+  async function pumpReplay(
+    controller: ReadableStreamDefaultController<AcpStreamMessage>,
+  ): Promise<void> {
+    const replay = pendingReplay;
+    if (!replay) {
+      return;
+    }
+    try {
+      const next = await replay.iterator.next();
+      if (state === "closed") {
+        return;
+      }
+      if (next.done) {
+        pendingReplay = undefined;
+        controller.enqueue(transformInbound(replay.response));
+        return;
+      }
+      controller.enqueue(next.value);
+      const frame = next.value;
+      if (isNotificationFrame(frame) && isRecord(frame.params)) {
+        const update = replayRecord(frame.params.update);
+        const metadata = replayRecord(update._meta)["deepseek-harness"];
+        if (isRecord(metadata) && (metadata.type === "history-attachment" || metadata.type === "history-file")) {
+          // Paseo transformers see extension notifications, not standard ACP
+          // session/update frames. Keep the standard tool state update too.
+          controller.enqueue({ jsonrpc: "2.0", method: "_dsh/history-attachment", params: frame.params });
+        }
+      }
+    } catch (error) {
+      pendingReplay = undefined;
+      if (state === "closed") {
+        return;
+      }
+      // The replay generator reports recoverable issues as notices itself; this
+      // path only exposes an unexpected failure, and never blocks the resume.
+      reportReplayError(replay.sessionId, error);
+      controller.enqueue(transformInbound(replay.response));
+    }
+  }
+
+  function reportReplayError(sessionId: string, error: unknown): void {
+    try {
+      replayContext?.onReplayNotice?.({
+        sessionId,
+        message: `History replay failed before completion: ${asError(error).message}`,
+      });
+    } catch {
+      // A broken notice sink must not turn a successful resume into a failure.
+    }
+  }
 
   return {
     readable,
@@ -374,6 +528,26 @@ export function createAcpCompatibilityStream(
       throw new Error(
         "DeepSeek Harness ACP received an invalid session/load request",
       );
+    }
+
+    if (replayContext) {
+      const sessionId = (messageRecord.params as RecordValue).sessionId;
+      if (typeof sessionId === "string" && sessionId.length > 0) {
+        const previous = pendingResume;
+        pendingResume = undefined;
+        if (previous) {
+          void previous.frames.return(undefined).catch(() => undefined);
+        }
+        pendingResume = {
+          id: message.id,
+          sessionId,
+          frames: replayDshSession(
+            sessionId,
+            replayContext,
+            replayAbort.signal,
+          ),
+        };
+      }
     }
 
     return {
@@ -557,6 +731,988 @@ function projectToolOutput(message: AcpStreamMessage): AcpStreamMessage {
       },
     },
   } as AcpStreamMessage;
+}
+
+// --- DSH session resume replay -------------------------------------------
+//
+// DSH's ACP advertises session/resume but not transcript replay: resuming
+// restores the model's context without re-emitting the conversation. Paseo opens
+// a resumed agent with history "replay" and expects session/update chunks, so
+// without this the timeline comes back empty while the model still has context.
+// We read DSH's own session.v4 store (frozen alongside the pinned DSH build) and
+// reconstruct the transcript as ACP session/update notifications. Any failure
+// degrades to the previous behaviour (empty timeline) rather than breaking resume.
+
+const ZSTD_MAGIC = 0xfd2fb528;
+const ZSTD_SKIPPABLE_MAGIC = 0x184d2a50;
+const ZSTD_SKIPPABLE_MASK = 0xfffffff0;
+const ZSTD_READ_CHUNK_BYTES = 256 * 1024;
+const MAX_REPLAY_NOTICE_DETAILS = 8;
+
+/** Collects replay problems so a degraded resume produces one summarized notice
+ * instead of one event per malformed record or missing attachment. */
+class ReplayNoticeBuffer {
+  private readonly details: string[] = [];
+  private suppressed = 0;
+  private flushed = false;
+
+  public constructor(
+    private readonly sessionId: string,
+    private readonly sink: ((notice: ReplayNotice) => void) | undefined,
+  ) {}
+
+  public add(message: string): void {
+    if (this.details.length < MAX_REPLAY_NOTICE_DETAILS) {
+      this.details.push(message);
+    } else {
+      this.suppressed += 1;
+    }
+  }
+
+  public flush(): void {
+    if (this.flushed || this.details.length === 0 || !this.sink) {
+      return;
+    }
+    this.flushed = true;
+    const suppressed =
+      this.suppressed === 0
+        ? ""
+        : `; ${this.suppressed} more replay issue${
+            this.suppressed === 1 ? "" : "s"
+          } suppressed`;
+    try {
+      this.sink({
+        sessionId: this.sessionId,
+        message: this.details.join("; ") + suppressed,
+      });
+    } catch {
+      // A broken notice sink must not turn a successful resume into a failure.
+    }
+  }
+}
+
+export function resolveDshHome(env: Readonly<Record<string, string>>): string {
+  return env.DSH_HOME || process.env.DSH_HOME || join(homedir(), ".dsh");
+}
+
+/** Sessions live under <home>/sessions/<cwd-key>/<sessionId>/; the id is unique,
+ * so we scan the cwd-key dirs rather than reproducing DSH's path encoding. */
+export async function locateDshSessionFile(
+  home: string,
+  sessionId: string,
+): Promise<string | undefined> {
+  if (!isSafeSessionId(sessionId)) {
+    throw new Error(`invalid DSH session id "${sessionId}"`);
+  }
+  const sessionsDir = join(home, "sessions");
+  let entries: string[];
+  try {
+    entries = await readdir(sessionsDir);
+  } catch (error) {
+    if (isMissingPathError(asError(error))) {
+      return undefined;
+    }
+    throw error;
+  }
+  for (const key of entries) {
+    const file = join(sessionsDir, key, sessionId, "session.v4.jsonl.zstd");
+    try {
+      const metadata = await stat(file);
+      if (metadata.isFile()) {
+        return file;
+      }
+    } catch (error) {
+      if (!isMissingPathError(asError(error))) {
+        throw error;
+      }
+    }
+  }
+  return undefined;
+}
+
+function isSafeSessionId(sessionId: string): boolean {
+  return (
+    sessionId.length > 0 &&
+    sessionId !== "." &&
+    sessionId !== ".." &&
+    !sessionId.includes("/") &&
+    !sessionId.includes("\\") &&
+    basename(sessionId) === sessionId
+  );
+}
+
+const zstdDecompressAsync = promisify(zstdDecompress);
+
+/**
+ * DSH appends every record as its own zstd frame, so the store is a stream of
+ * concatenated frames. Node's one-shot decoder consumes a single frame, so we
+ * scan frame boundaries incrementally and decode one frame at a time without
+ * ever materializing the compressed or decompressed file in full.
+ */
+async function* decodeDshSessionRecords(
+  file: string,
+  signal: AbortSignal | undefined,
+  notices: ReplayNoticeBuffer,
+): AsyncGenerator<RecordValue> {
+  const stream = createReadStream(file, {
+    highWaterMark: ZSTD_READ_CHUNK_BYTES,
+    ...(signal ? { signal } : {}),
+  });
+  let pending = Buffer.alloc(0);
+  let offset = 0;
+  let logicalRecord = 0;
+  let lastSeq: number | undefined;
+  let stopped = false;
+  const decoder = new StringDecoder("utf8");
+  let text = "";
+
+  function* parseLines(
+    chunk: Buffer | undefined,
+    final = false,
+  ): Generator<RecordValue> {
+    if (chunk) {
+      text += decoder.write(chunk);
+    }
+    if (final) {
+      text += decoder.end();
+    }
+    for (;;) {
+      const newline = text.indexOf("\n");
+      if (newline < 0) {
+        break;
+      }
+      const line = text.slice(0, newline);
+      text = text.slice(newline + 1);
+      const trimmed = line.trim();
+      if (!trimmed) {
+        continue;
+      }
+      logicalRecord += 1;
+      let parsed: unknown;
+      try {
+        parsed = JSON.parse(trimmed);
+      } catch (error) {
+        notices.add(
+          `record ${logicalRecord} is not valid JSON: ${asError(error).message}`,
+        );
+        continue;
+      }
+      if (!isRecord(parsed)) {
+        notices.add(`record ${logicalRecord} is not a JSON object`);
+        continue;
+      }
+      const seq =
+        typeof parsed.seq === "number" && Number.isFinite(parsed.seq)
+          ? parsed.seq
+          : undefined;
+      if (seq !== undefined) {
+        if (lastSeq !== undefined && seq < lastSeq) {
+          notices.add(
+            `record ${logicalRecord} has seq ${seq} after ${lastSeq}; replay follows stored order`,
+          );
+        }
+        lastSeq = seq;
+      }
+      yield parsed;
+    }
+    if (final && text.length > 0) {
+      const trimmed = text.trim();
+      text = "";
+      if (trimmed) {
+        logicalRecord += 1;
+        let parsed: unknown;
+        try {
+          parsed = JSON.parse(trimmed);
+        } catch (error) {
+          notices.add(
+            `record ${logicalRecord} is not valid JSON: ${asError(error).message}`,
+          );
+          return;
+        }
+        if (!isRecord(parsed)) {
+          notices.add(`record ${logicalRecord} is not a JSON object`);
+          return;
+        }
+        yield parsed;
+      }
+    }
+  }
+
+  try {
+    for await (const chunk of stream) {
+      signal?.throwIfAborted();
+      const bytes = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+      pending = pending.length === 0 ? bytes : Buffer.concat([pending, bytes]);
+      let consumed = 0;
+      while (pending.length - consumed >= 4) {
+        const magic = pending.readUInt32LE(consumed);
+        if ((magic & ZSTD_SKIPPABLE_MASK) === ZSTD_SKIPPABLE_MAGIC) {
+          const end = skippableFrameEnd(pending, consumed);
+          if (end === undefined) {
+            break;
+          }
+          consumed = end;
+          continue;
+        }
+        let end: number | undefined;
+        try {
+          end = scanZstdFrameEnd(pending, consumed);
+        } catch (error) {
+          notices.add(
+            `history replay stopped at byte ${offset + consumed}: ${asError(error).message}`,
+          );
+          stopped = true;
+          break;
+        }
+        if (end === undefined) {
+          break;
+        }
+        const frameStart = consumed;
+        consumed = end;
+        let decoded: Buffer;
+        try {
+          decoded = await zstdDecompressAsync(
+            pending.subarray(frameStart, end),
+          );
+        } catch (error) {
+          notices.add(
+            `zstd frame at byte ${offset + frameStart} could not be decoded: ${asError(error).message}; that record is unavailable`,
+          );
+          continue;
+        }
+        signal?.throwIfAborted();
+        yield* parseLines(decoded);
+      }
+      if (stopped) {
+        break;
+      }
+      if (consumed > 0) {
+        offset += consumed;
+        pending = pending.subarray(consumed);
+      }
+    }
+    if (!stopped && pending.length > 0) {
+      notices.add(
+        `transcript ends with an incomplete zstd frame at byte ${offset} (${pending.length} bytes); later history is unavailable`,
+      );
+    }
+    yield* parseLines(undefined, true);
+  } finally {
+    if (!stream.destroyed) {
+      stream.destroy();
+    }
+  }
+}
+
+/** End offset of the zstd frame beginning at `start`, or undefined when the
+ * available bytes stop inside its header/blocks. Throws on structurally invalid
+ * headers so a corrupt store cannot desynchronize the frame walk silently. */
+function scanZstdFrameEnd(bytes: Buffer, start: number): number | undefined {
+  if (bytes.length - start < 4) {
+    return undefined;
+  }
+  if (bytes.readUInt32LE(start) !== ZSTD_MAGIC) {
+    throw new Error(`invalid zstd frame magic at byte ${start}`);
+  }
+  let offset = start + 4;
+  if (offset >= bytes.length) {
+    return undefined;
+  }
+  const descriptor = bytes.readUInt8(offset);
+  offset += 1;
+  if ((descriptor & 24) !== 0) {
+    throw new Error(`reserved zstd frame-header bit at byte ${offset - 1}`);
+  }
+  const contentSizeFlag = descriptor >>> 6;
+  const singleSegment = (descriptor & 32) !== 0;
+  const checksum = (descriptor & 4) !== 0;
+  const dictionaryFlag = descriptor & 3;
+  const dictionaryBytes = dictionaryFlag === 3 ? 4 : dictionaryFlag;
+  const contentSizeBytes =
+    contentSizeFlag === 0 ? (singleSegment ? 1 : 0) : 1 << contentSizeFlag;
+  const remainingHeaderBytes =
+    (singleSegment ? 0 : 1) + dictionaryBytes + contentSizeBytes;
+  if (bytes.length - offset < remainingHeaderBytes) {
+    return undefined;
+  }
+  offset += remainingHeaderBytes;
+  for (;;) {
+    if (bytes.length - offset < 3) {
+      return undefined;
+    }
+    const blockHeader = bytes.readUIntLE(offset, 3);
+    offset += 3;
+    const lastBlock = (blockHeader & 1) !== 0;
+    const blockType = (blockHeader >>> 1) & 3;
+    const blockSize = blockHeader >>> 3;
+    if (blockType === 3) {
+      throw new Error(`reserved zstd block type at byte ${offset - 3}`);
+    }
+    const payloadBytes = blockType === 1 ? 1 : blockSize;
+    if (bytes.length - offset < payloadBytes) {
+      return undefined;
+    }
+    offset += payloadBytes;
+    if (lastBlock) {
+      break;
+    }
+  }
+  if (checksum) {
+    if (bytes.length - offset < 4) {
+      return undefined;
+    }
+    offset += 4;
+  }
+  return offset;
+}
+
+function skippableFrameEnd(
+  bytes: Buffer,
+  start: number,
+): number | undefined {
+  if (bytes.length - start < 8) {
+    return undefined;
+  }
+  const end = start + 8 + bytes.readUInt32LE(start + 4);
+  return end > bytes.length ? undefined : end;
+}
+
+/** One attachment reference as stored by DSH in a message content block. */
+export interface DshReplayAttachmentRef {
+  kind: "image" | "file";
+  attachmentId: string;
+  mediaType?: string;
+  bytes?: number;
+  width?: number;
+  height?: number;
+  name?: string;
+}
+
+interface ReplayAttachmentContent {
+  content: RecordValue;
+  descriptor: DshReplayAttachmentRef;
+}
+
+interface ReplayAttachmentIds {
+  messageId?: string;
+  toolCallId?: string;
+}
+
+/** Resolves durable attachment references without reading image bytes during
+ * replay: it only validates the reference and confirms the object exists. */
+class ReplayAttachments {
+  private readonly root: string;
+
+  public constructor(
+    home: string,
+    private readonly signal: AbortSignal | undefined,
+    private readonly notices: ReplayNoticeBuffer,
+  ) {
+    this.root = join(home, "attachments", "v1");
+  }
+
+  public async image(
+    value: unknown,
+  ): Promise<ReplayAttachmentContent | undefined> {
+    const ref = replayRecord(value);
+    const attachmentId = replayStr(ref.attachmentId);
+    const hex = attachmentHex(attachmentId);
+    const mediaType = replayStr(ref.mediaType);
+    if (!hex || !attachmentId || !mediaType) {
+      this.notices.add(
+        `stored image reference ${attachmentId ?? "(missing id)"} is incomplete; image omitted`,
+      );
+      return undefined;
+    }
+    const expectedBytes = replayByteSize(ref.bytes);
+    const file = join(this.root, "objects", hex.slice(0, 2), hex);
+    let metadata;
+    try {
+      metadata = await stat(file);
+    } catch (error) {
+      this.notices.add(
+        `stored image ${attachmentId} is unavailable: ${asError(error).message}; image omitted`,
+      );
+      return undefined;
+    }
+    this.signal?.throwIfAborted();
+    if (!metadata.isFile()) {
+      this.notices.add(`stored image ${attachmentId} is not a file; image omitted`);
+      return undefined;
+    }
+    if (expectedBytes !== undefined && metadata.size !== expectedBytes) {
+      this.notices.add(
+        `stored image ${attachmentId} has ${metadata.size} bytes but the record says ${expectedBytes}; image omitted`,
+      );
+      return undefined;
+    }
+    const name = replayStr(ref.name);
+    return {
+      content: {
+        type: "resource_link",
+        uri: `dsh-attachment://${hex}`,
+        name: name ?? "image",
+        mimeType: mediaType,
+        size: metadata.size,
+      },
+      descriptor: {
+        kind: "image",
+        attachmentId,
+        mediaType,
+        bytes: metadata.size,
+        ...replayDimensions(ref),
+        ...(name ? { name } : {}),
+      },
+    };
+  }
+
+  public async file(
+    value: unknown,
+  ): Promise<ReplayAttachmentContent | undefined> {
+    const ref = replayRecord(value);
+    const attachmentId = replayStr(ref.attachmentId);
+    const hex = attachmentHex(attachmentId);
+    const name = replayStr(ref.name);
+    if (!hex || !attachmentId || !name || !isSafeLeafName(name)) {
+      this.notices.add(
+        `stored file reference ${attachmentId ?? "(missing id)"} is invalid; file omitted`,
+      );
+      return undefined;
+    }
+    const file = join(this.root, "files", hex.slice(0, 2), hex, name);
+    let metadata;
+    try {
+      metadata = await stat(file);
+    } catch (error) {
+      this.notices.add(
+        `stored file ${attachmentId} (${name}) is unavailable: ${asError(error).message}; file omitted`,
+      );
+      return undefined;
+    }
+    if (!metadata.isFile()) {
+      this.notices.add(`stored file ${attachmentId} (${name}) is not a file; file omitted`);
+      return undefined;
+    }
+    const expectedBytes = replayByteSize(ref.bytes);
+    if (expectedBytes !== undefined && metadata.size !== expectedBytes) {
+      this.notices.add(
+        `stored file ${attachmentId} (${name}) has ${metadata.size} bytes but the record says ${expectedBytes}`,
+      );
+    }
+    this.signal?.throwIfAborted();
+    return {
+      content: {
+        type: "resource_link",
+        uri: pathToFileURL(file).href,
+        name,
+        size: metadata.size,
+      },
+      descriptor: {
+        kind: "file",
+        attachmentId,
+        name,
+        bytes: metadata.size,
+      },
+    };
+  }
+}
+
+/** Read one DSH image on demand for the client renderer. Replay itself never
+ * decodes history images; this verifies the exact stored bytes and digest. */
+export async function readDshImageAttachment(
+  attachment: Pick<DshReplayAttachmentRef, "attachmentId" | "mediaType" | "bytes">,
+  env: Readonly<Record<string, string>>,
+  signal?: AbortSignal,
+): Promise<{ bytes: Buffer; mimeType: string }> {
+  const attachmentId = replayStr(attachment.attachmentId);
+  const hex = attachmentHex(attachmentId);
+  const mediaType = replayStr(attachment.mediaType);
+  if (!hex || !attachmentId || !mediaType) {
+    throw new Error("Invalid DSH image attachment reference");
+  }
+  const file = join(
+    resolveDshHome(env),
+    "attachments",
+    "v1",
+    "objects",
+    hex.slice(0, 2),
+    hex,
+  );
+  const expectedBytes = replayByteSize(attachment.bytes);
+  const metadata = await stat(file);
+  if (expectedBytes !== undefined && metadata.size !== expectedBytes) {
+    throw new Error(
+      `DSH image attachment ${attachmentId} has ${metadata.size} bytes, expected ${expectedBytes}`,
+    );
+  }
+  const bytes = await readFile(file, { signal });
+  if (expectedBytes !== undefined && bytes.length !== expectedBytes) {
+    throw new Error(
+      `DSH image attachment ${attachmentId} changed while being read: ${bytes.length} bytes, expected ${expectedBytes}`,
+    );
+  }
+  const digest = createHash("sha256").update(bytes).digest("hex");
+  if (digest !== hex) {
+    throw new Error(
+      `DSH image attachment ${attachmentId} failed its sha256 integrity check`,
+    );
+  }
+  return { bytes, mimeType: mediaType };
+}
+
+/** Map decoded DSH v4 records to ACP session/update frames incrementally. */
+class ReplayAssembler {
+  private readonly calls = new Map<
+    string,
+    { name: string; turn: number | undefined }
+  >();
+  private readonly results = new Set<string>();
+  private readonly turnEnds = new Map<number, RecordValue>();
+
+  public constructor(
+    private readonly sessionId: string,
+    private readonly attachments: ReplayAttachments,
+    private readonly notices: ReplayNoticeBuffer,
+  ) {}
+
+  public async *accept(record: RecordValue): AsyncGenerator<AcpStreamMessage> {
+    const type = replayStr(record.type);
+    const data = replayRecord(record.data);
+    if (type === "user/message") {
+      yield* this.userMessage(data);
+      return;
+    }
+    if (type === "assistant/message") {
+      yield* this.assistantMessage(data);
+      return;
+    }
+    if (type === "tool/call") {
+      yield* this.toolCall(data);
+      return;
+    }
+    if (type === "tool/result") {
+      yield* this.toolResult(data);
+      return;
+    }
+    if (type === "turn/end") {
+      this.turnEnd(data);
+    }
+  }
+
+  public *finish(): Generator<AcpStreamMessage> {
+    for (const [callId, call] of this.calls) {
+      if (this.results.has(callId)) {
+        continue;
+      }
+      const reason =
+        call.turn === undefined ? undefined : this.turnEnds.get(call.turn);
+      const kind = replayStr(replayRecord(reason).kind);
+      if (kind === "aborted" || kind === "interrupted" || kind === "error") {
+        yield this.frame({
+          sessionUpdate: "tool_call_update",
+          toolCallId: callId,
+          status: "failed",
+          content: [],
+        });
+        this.notices.add(
+          `tool call ${callId} (${call.name}) never stored a result because turn ${call.turn} ended with ${kind}; marked failed`,
+        );
+      } else {
+        this.notices.add(
+          `tool call ${callId} (${call.name}) has no stored result; left pending`,
+        );
+      }
+    }
+  }
+
+  private async *userMessage(data: RecordValue): AsyncGenerator<AcpStreamMessage> {
+    if (replayStr(data.role) !== "user") {
+      return;
+    }
+    const source = replayStr(replayRecord(data.source).kind);
+    if (source && source !== "user") return;
+    const messageId = replayStr(data.id);
+    for (const value of replayArray(data.content)) {
+      const block = replayRecord(value);
+      const type = replayStr(block.type) ?? "";
+      if (type === "text") {
+        const text = typeof block.text === "string" ? block.text : "";
+        if (text) {
+          yield this.frame({
+            sessionUpdate: "user_message_chunk",
+            content: { type: "text", text },
+            ...(messageId ? { messageId } : {}),
+          });
+        }
+        continue;
+      }
+      if (type !== "image" && type !== "file") {
+        continue;
+      }
+      const converted =
+        type === "image"
+          ? await this.attachments.image(block.attachment)
+          : await this.attachments.file(block.attachment);
+      if (!converted) {
+        continue;
+      }
+      yield this.frame(
+        this.withAttachment(
+          {
+            sessionUpdate: "user_message_chunk",
+            content: converted.content,
+            ...(messageId ? { messageId } : {}),
+          },
+          converted,
+          messageId ? { messageId } : {},
+        ),
+      );
+    }
+  }
+
+  private async *assistantMessage(
+    data: RecordValue,
+  ): AsyncGenerator<AcpStreamMessage> {
+    const message = replayRecord(data.message);
+    const messageId = replayStr(message.id);
+    if (data.interrupted === true) {
+      this.notices.add(
+        `assistant message ${messageId ?? "(unknown)"} was interrupted; only its delivered prefix was stored`,
+      );
+    }
+    for (const value of replayArray(message.content)) {
+      const block = replayRecord(value);
+      const type = replayStr(block.type) ?? "";
+      if (type === "reasoning" || type === "thinking") {
+        const text = typeof block.text === "string" ? block.text : "";
+        if (text) {
+          // DSH reuses the answer id for reasoning; disambiguate exactly as
+          // projectThoughtMessageId does so Paseo keys the thought separately.
+          yield this.frame({
+            sessionUpdate: "agent_thought_chunk",
+            content: { type: "text", text },
+            ...(messageId ? { messageId: `${messageId}:thought` } : {}),
+          });
+        }
+        continue;
+      }
+      if (type === "text") {
+        const text = typeof block.text === "string" ? block.text : "";
+        if (text) {
+          yield this.frame({
+            sessionUpdate: "agent_message_chunk",
+            content: { type: "text", text },
+            ...(messageId ? { messageId } : {}),
+          });
+        }
+        continue;
+      }
+      if (type !== "image" && type !== "file") {
+        continue;
+      }
+      const converted =
+        type === "image"
+          ? await this.attachments.image(block.attachment)
+          : await this.attachments.file(block.attachment);
+      if (!converted) {
+        continue;
+      }
+      yield this.frame(
+        this.withAttachment(
+          {
+            sessionUpdate: "agent_message_chunk",
+            content: converted.content,
+            ...(messageId ? { messageId } : {}),
+          },
+          converted,
+          messageId ? { messageId } : {},
+        ),
+      );
+    }
+  }
+
+  private *toolCall(data: RecordValue): Generator<AcpStreamMessage> {
+    const callId = replayStr(data.callId);
+    if (!callId) {
+      this.notices.add("tool call record has no callId; ignored");
+      return;
+    }
+    const name = replayStr(data.name) ?? "tool";
+    const turn = replayNumber(data.turn);
+    this.calls.set(callId, { name, turn });
+    yield this.frame({
+      sessionUpdate: "tool_call",
+      toolCallId: callId,
+      name,
+      title: name,
+      kind: "other",
+      // A stored call without a stored result never completed; `pending` is the
+      // honest ACP state and finish() upgrades it only with turn-end evidence.
+      status: "pending",
+      rawInput: replayParseInput(data.arguments),
+      content: [],
+    });
+  }
+
+  private async *toolResult(
+    data: RecordValue,
+  ): AsyncGenerator<AcpStreamMessage> {
+    const message = replayRecord(data.message);
+    const callId =
+      replayStr(message.toolCallId) ??
+      replayStr(replayRecord(message.source).callId);
+    if (!callId) {
+      this.notices.add("tool result record has no callId; ignored");
+      return;
+    }
+    if (!this.calls.has(callId)) {
+      this.notices.add(
+        `tool result for unknown call ${callId}; not shown in the replayed timeline`,
+      );
+      return;
+    }
+    if (this.results.has(callId)) {
+      this.notices.add(`duplicate tool result for ${callId}; latest ignored`);
+      return;
+    }
+    this.results.add(callId);
+    const failed =
+      message.isError === true || isRecord(data.error);
+    const converted: RecordValue[] = [];
+    const images: Array<{ content: RecordValue; meta: RecordValue }> = [];
+    for (const value of replayArray(message.content)) {
+      const block = replayRecord(value);
+      const type = replayStr(block.type) ?? "";
+      if (type === "text") {
+        const text = typeof block.text === "string" ? block.text : "";
+        if (text) {
+          converted.push({ type: "content", content: { type: "text", text } });
+        }
+        continue;
+      }
+      if (type !== "image" && type !== "file") {
+        continue;
+      }
+      const attachment =
+        type === "image"
+          ? await this.attachments.image(block.attachment)
+          : await this.attachments.file(block.attachment);
+      if (!attachment) {
+        continue;
+      }
+      const meta = this.attachmentMetadata(attachment, {
+        toolCallId: callId,
+      });
+      converted.push({
+        type: "content",
+        content: attachment.content,
+        _meta: meta,
+      });
+      if (attachment.descriptor.kind === "image") {
+        images.push({ content: converted[converted.length - 1]!, meta });
+      }
+    }
+    const update: RecordValue = {
+      sessionUpdate: "tool_call_update",
+      toolCallId: callId,
+      status: failed ? "failed" : "completed",
+      content: converted,
+      rawOutput: { content: converted },
+    };
+    if (images.length > 0) {
+      update._meta = images[0]!.meta;
+    }
+    yield this.frame(update);
+    // The timeline transformer attaches one image per update; preserve every
+    // additional tool-result image with its own metadata instead of dropping it.
+    for (const image of images.slice(1)) {
+      yield this.frame({
+        sessionUpdate: "tool_call_update",
+        toolCallId: callId,
+        status: failed ? "failed" : "completed",
+        content: [image.content],
+        _meta: image.meta,
+      });
+    }
+  }
+
+  private turnEnd(data: RecordValue): void {
+    const turn = replayNumber(data.turn);
+    if (turn === undefined) {
+      return;
+    }
+    const reason = replayRecord(data.reason);
+    this.turnEnds.set(turn, reason);
+    const kind = replayStr(reason.kind);
+    if (kind !== "aborted" && kind !== "interrupted" && kind !== "error") {
+      return;
+    }
+    const failure = replayRecord(reason.error);
+    const detail =
+      replayStr(failure.message) ?? replayStr(reason.message) ?? "";
+    this.notices.add(
+      `turn ${turn} ended with ${kind}${detail ? `: ${detail}` : ""}`,
+    );
+  }
+
+  private withAttachment(
+    update: RecordValue,
+    attachment: ReplayAttachmentContent,
+    ids: ReplayAttachmentIds,
+  ): RecordValue {
+    return {
+      ...update,
+      _meta: this.attachmentMetadata(attachment, ids),
+    };
+  }
+
+  /** Image payloads match `shared/history-attachments.ts` exactly: the client
+   * renderer only accepts a single image reference per timeline item. */
+  private attachmentMetadata(
+    attachment: ReplayAttachmentContent,
+    ids: ReplayAttachmentIds,
+  ): RecordValue {
+    const { kind, ...reference } = attachment.descriptor;
+    return {
+      "deepseek-harness": {
+        type: kind === "image" ? "history-attachment" : "history-file",
+        sessionId: this.sessionId,
+        ...(ids.messageId ? { messageId: ids.messageId } : {}),
+        ...(ids.toolCallId ? { toolCallId: ids.toolCallId } : {}),
+        attachment: reference,
+      },
+    };
+  }
+
+  private frame(update: RecordValue): AcpStreamMessage {
+    return replayFrame(this.sessionId, update);
+  }
+}
+
+/**
+ * Stream one resumed session's transcript as ACP session/update notifications.
+ * A missing or damaged store degrades to an empty timeline plus a summarized
+ * notice; it never fails the resume and never fabricates completion.
+ */
+export async function* replayDshSession(
+  sessionId: string,
+  context: ReplayContext,
+  signal?: AbortSignal,
+): AsyncGenerator<AcpStreamMessage> {
+  const notices = new ReplayNoticeBuffer(sessionId, context.onReplayNotice);
+  try {
+    if (!isSafeSessionId(sessionId)) {
+      notices.add(`invalid DSH session id "${sessionId}"; history was not replayed`);
+      return;
+    }
+    const home = resolveDshHome(context.env);
+    const file = await locateDshSessionFile(home, sessionId);
+    if (!file) {
+      notices.add(
+        `no stored DSH transcript was found for session ${sessionId}; the resumed session keeps its model context but its timeline cannot be replayed`,
+      );
+      return;
+    }
+    const attachments = new ReplayAttachments(home, signal, notices);
+    const assembler = new ReplayAssembler(sessionId, attachments, notices);
+    let records = 0;
+    for await (const record of decodeDshSessionRecords(
+      file,
+      signal,
+      notices,
+    )) {
+      signal?.throwIfAborted();
+      yield* assembler.accept(record);
+      records += 1;
+      if (records % 512 === 0) {
+        // Long logs must not monopolize the daemon's event loop while replaying.
+        await setImmediatePromise();
+      }
+    }
+    yield* assembler.finish();
+  } catch (error) {
+    if (signal?.aborted) {
+      throw error;
+    }
+    notices.add(`history replay failed: ${asError(error).message}`);
+  } finally {
+    notices.flush();
+  }
+}
+
+function attachmentHex(attachmentId: string | undefined): string | undefined {
+  if (!attachmentId) {
+    return undefined;
+  }
+  return /^sha256:([a-f0-9]{64})$/.exec(attachmentId)?.[1];
+}
+
+function isSafeLeafName(name: string): boolean {
+  return (
+    name.length > 0 &&
+    name !== "." &&
+    name !== ".." &&
+    !name.includes("/") &&
+    !name.includes("\\") &&
+    basename(name) === name
+  );
+}
+
+function replayByteSize(value: unknown): number | undefined {
+  return typeof value === "number" &&
+    Number.isSafeInteger(value) &&
+    value >= 0
+    ? value
+    : undefined;
+}
+
+function replayDimensions(ref: RecordValue): {
+  width?: number;
+  height?: number;
+} {
+  const width = replayByteSize(ref.width);
+  const height = replayByteSize(ref.height);
+  return {
+    ...(width !== undefined && width > 0 ? { width } : {}),
+    ...(height !== undefined && height > 0 ? { height } : {}),
+  };
+}
+
+function replayNumber(value: unknown): number | undefined {
+  return typeof value === "number" && Number.isFinite(value)
+    ? value
+    : undefined;
+}
+
+function replayArray(value: unknown): readonly unknown[] {
+  return Array.isArray(value) ? value : [];
+}
+
+function replayFrame(sessionId: string, update: RecordValue): AcpStreamMessage {
+  return {
+    jsonrpc: "2.0",
+    method: "session/update",
+    params: { sessionId, update },
+  } as unknown as AcpStreamMessage;
+}
+
+function replayRecord(value: unknown): RecordValue {
+  return isRecord(value) ? value : {};
+}
+
+function replayStr(value: unknown): string | undefined {
+  return typeof value === "string" && value.length > 0 ? value : undefined;
+}
+
+function replayParseInput(value: unknown): unknown {
+  if (typeof value !== "string") {
+    return value ?? null;
+  }
+  try {
+    return JSON.parse(value);
+  } catch {
+    return value;
+  }
 }
 
 function assertAcpStreamMessage(value: AnyMessage): AcpStreamMessage {

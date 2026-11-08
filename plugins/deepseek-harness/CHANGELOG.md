@@ -1,5 +1,33 @@
 # Changelog
 
+## 0.1.2 — 2026-11-08
+
+- Keep `deepseek-harness` / `acp` for reverse-engineering sessions and add
+  `deepseek-harness-daily` / `acp-daily` for ordinary work without REA startup.
+- Replace synchronous full-store replay with asynchronous, backpressured
+  concatenated-zstd decoding. Preserve final records and release readers on close.
+- Never report an unfinished tool as completed; retain recorded errors and
+  interrupted turns. Report missing/corrupt replay as a visible warning without
+  failing native resume. Do not replay runtime/skill injections as user messages.
+- Restore real DSH image references through a client timeline card and on-demand,
+  SHA256-verified local reads; retain file references. Native ACP non-text chunks
+  alone are insufficient for Paseo's timeline, so use the vendor extension path.
+- Target Paseo 0.15.3, typecheck server and React Native client separately, and
+  verify 104 behavioral tests plus real image rendering/resume in the web UI.
+
+## 0.1.1-replay.1 — 2026-10-26
+
+- Synthesize transcript replay on resume. DSH's ACP advertises `session/resume`
+  but does not replay a resumed session's updates, so reopening an agent (Paseo
+  opens with history `replay`) left the timeline empty even though the model kept
+  its context. The compatibility stream now reads DSH's own `session.v4` store
+  and injects the conversation as ACP `session/update` notifications before the
+  resume response. Any failure degrades to the previous empty-timeline behaviour
+  rather than breaking resume.
+- Decode DSH's concatenated-zstd session store by walking frame headers, since
+  DSH appends one zstd frame per record and one-shot decoders stop at the first.
+- Maintained fork (W1ndchaser-a/paseo-stuff) tracking upstream geoqiao/paseo-stuff.
+
 ## 0.1.0-beta.13 — 2026-10-18
 
 - **Requires Paseo 0.11.0 or later.** On Paseo 0.8 to 0.10, stay on beta.12.
