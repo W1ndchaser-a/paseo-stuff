@@ -1,6 +1,6 @@
 {
   "name": "paseo-deepseek-harness",
-  "version": "0.1.0-beta.13",
+  "version": "0.1.1-replay.1",
   "description": "DeepSeek Harness through its official ACP profile for Paseo 0.11 and later.",
   "repository": {
     "type": "git",
