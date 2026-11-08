@@ -1,5 +1,6 @@
 import { AsyncLocalStorage } from "node:async_hooks";
 import { runAcpProvider } from "@getpaseo/plugin/server/acp";
+import { historyAttachmentTransformer, registerReplayHome } from "./history-attachments";
 import type {
   ProviderConnection,
   ProviderEvent,
@@ -14,8 +15,6 @@ import {
   type DshConnectorContext,
 } from "./dsh-compatibility";
 
-const PROVIDER_ID = "deepseek-harness";
-const DEFAULT_COMMAND = ["dsh", "--profile", "acp"] as const;
 const MISSING_LAUNCH =
   "DeepSeek Harness requires Paseo 0.11 or newer, which supplies the resolved dsh launch";
 const CLOSE_TIMEOUT_MS = 5_000;
@@ -23,6 +22,7 @@ const COMMAND_CAPABILITY = "prompt.command";
 
 export interface DeepSeekHarnessProviderOptions {
   startupTimeoutMs?: number;
+  profile?: "acp" | "acp-daily";
 }
 
 export interface ManagedDeepSeekHarnessProvider extends ProviderRegistration {
@@ -41,12 +41,15 @@ interface ConnectionScope extends InputContext {
   closeConnection?: () => Promise<void>;
   closePromise?: Promise<void>;
   resourceClosePromise?: Promise<void>;
+  onReplayNotice?: DshConnectorContext["onReplayNotice"];
 }
 
 export function createDeepSeekHarnessProvider(
   options: DeepSeekHarnessProviderOptions = {},
 ): ManagedDeepSeekHarnessProvider {
   validateOptions(options);
+  const profile = options.profile ?? "acp";
+  const daily = profile === "acp-daily";
 
   const storage = new AsyncLocalStorage<ConnectionScope>();
   const scopes = new Set<ConnectionScope>();
@@ -54,10 +57,13 @@ export function createDeepSeekHarnessProvider(
   let disposed = false;
   let disposePromise: Promise<void> | undefined;
   const delegate = runAcpProvider({
-    id: PROVIDER_ID,
-    label: "DeepSeek Harness",
-    description: "DeepSeek Harness through its official ACP profile.",
+    id: daily ? "deepseek-harness-daily" : "deepseek-harness",
+    label: daily ? "DSH · 日常" : "DSH · 逆向",
+    description: daily
+      ? "DeepSeek Harness without the REA tool catalog."
+      : "DeepSeek Harness with the complete REA tool catalog.",
     icon: "icon.svg",
+    transformers: [historyAttachmentTransformer],
     ...(options.startupTimeoutMs === undefined
       ? {}
       : { acpOptions: { startupTimeoutMs: options.startupTimeoutMs } }),
@@ -74,6 +80,7 @@ export function createDeepSeekHarnessProvider(
         env: scope.env,
         resources: scope.resources,
         isClosed: () => scope.closed,
+        onReplayNotice: scope.onReplayNotice,
       };
       return createDshAcpStream(context);
     },
@@ -180,8 +187,40 @@ export function createDeepSeekHarnessProvider(
     }
 
     const capabilities = withoutUnsupportedCapabilities(
-      connection.capabilities,
+      request.capabilities.includes("timeline.plugin")
+        ? [...connection.capabilities, "timeline.plugin"]
+        : connection.capabilities,
     );
+    const listeners = new Set<(event: ProviderEvent) => void>();
+    const openedSessions = new Set<string>();
+    const notices = new Map<string, Extract<ProviderEvent, { type: "session.notice" }>>();
+    const emit = (event: ProviderEvent) => {
+      for (const listener of listeners) listener(event);
+    };
+    const unsubscribe = connection.onEvent((event) => {
+      emit(filterProviderEvent(event));
+      if (event.type === "session.opened") {
+        openedSessions.add(event.sessionId);
+        const notice = notices.get(event.sessionId);
+        if (notice) {
+          notices.delete(event.sessionId);
+          emit(notice);
+        }
+      } else if (event.type === "session.closed") {
+        openedSessions.delete(event.sessionId);
+        notices.delete(event.sessionId);
+      }
+    });
+    scope.closeConnection = async () => {
+      try {
+        await closeScope(scope, connection);
+      } finally {
+        unsubscribe();
+        listeners.clear();
+        openedSessions.clear();
+        notices.clear();
+      }
+    };
     return {
       version: connection.version,
       capabilities,
@@ -195,10 +234,32 @@ export function createDeepSeekHarnessProvider(
           );
         }
         const inputContext = contextForInput(input);
+        if (input.type === "session.open") {
+          openedSessions.delete(input.sessionId);
+          notices.delete(input.sessionId);
+          registerReplayHome(input.persistence, { ...scope.launch.env, ...input.config.env });
+        }
         const inputScope: ConnectionScope = {
           ...inputContext,
           launch: scope.launch,
           resources: scope.resources,
+          onReplayNotice: input.type === "session.open"
+            ? ({ message }) => {
+                if (scope.closed) return;
+                const event: Extract<ProviderEvent, { type: "session.notice" }> = {
+                  type: "session.notice",
+                  sessionId: input.sessionId,
+                  notice: {
+                    id: "dsh-history-replay",
+                    severity: "warning",
+                    title: "历史回放不完整",
+                    description: message,
+                  },
+                };
+                if (openedSessions.has(input.sessionId)) emit(event);
+                else notices.set(input.sessionId, event);
+              }
+            : undefined,
           get closed() {
             return scope.closed;
           },
@@ -206,17 +267,16 @@ export function createDeepSeekHarnessProvider(
         return storage.run(inputScope, () => connection.send(input));
       },
       onEvent(listener) {
-        return connection.onEvent((event) =>
-          listener(filterProviderEvent(event)),
-        );
+        listeners.add(listener);
+        return () => listeners.delete(listener);
       },
-      close: () => closeScope(scope, connection),
+      close: scope.closeConnection,
     };
   };
 
   const registration: ManagedDeepSeekHarnessProvider = {
     ...delegate,
-    command: DEFAULT_COMMAND,
+    command: ["dsh", "--profile", profile],
     async status(request) {
       if (!request.launch) {
         return { available: false, diagnostic: MISSING_LAUNCH };

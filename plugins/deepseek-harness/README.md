@@ -2,10 +2,10 @@
 
 **Use the official DeepSeek Harness in Paseo — with native context resume and complete tool results.**
 
-A community-maintained provider plugin for Paseo 0.11 and later, not a
-replacement agent loop or an official DeepSeek/Paseo endorsement. It runs
-`dsh --profile acp`; Paseo owns the chat UI. No custom client surface or
-patched Paseo app is required.
+A community-maintained provider plugin for Paseo 0.15.3 and later, not a
+replacement agent loop or an official DeepSeek/Paseo endorsement. It provides
+`DSH · 日常` (`acp-daily`) and `DSH · 逆向` (`acp`). Paseo owns the chat UI;
+a small client renderer displays restored image and file attachments.
 
 ![A completed DeepSeek Harness conversation with the selected model, Bash tool calls, and reply](images/cover.png)
 
@@ -14,24 +14,18 @@ patched Paseo app is required.
 [Install](#install-prerequisites) · [Compatibility](#acp-compatibility-and-limitations) · [Verification](https://github.com/geoqiao/paseo-stuff/blob/main/plugins/deepseek-harness/docs/verification.md) · [Code review](https://github.com/geoqiao/paseo-stuff/blob/main/plugins/deepseek-harness/docs/code-review.md)
 
 > [!IMPORTANT]
-> **Requirements:** Paseo 0.11.0 or later (tested Paseo versions are listed
-> under [Paseo installation](#paseo-installation)), daemon Node.js 22.19.0 or
-> newer, and a separately installed official DeepSeek Harness executable,
-> **DSH 0.1.5-rc.1 or newer**. Newer DSH releases are accepted without an
-> exact-version check. Tested: **0.1.5-rc.1**, **0.1.5-rc.2**, **0.1.6-alpha.2**,
-> **0.1.7-alpha.2**, **0.1.7-rc.1**, **0.1.7-rc.2**, **0.2.0-rc.1**,
-> **0.2.0-rc.2**, **0.2.1-rc.2** and **0.2.1-rc.3**. The executable must be able to run
-> `dsh --profile acp --version` and `dsh --profile acp`.
-> On Paseo 0.8 to 0.10, install beta.12 instead:
-> `paseo plugin add geoqiao/paseo-stuff:plugins/deepseek-harness --ref deepseek-harness-v0.1.0-beta.12`.
+> **Requirements:** Paseo 0.15.3 or later, daemon Node.js 22.19.0 or newer,
+> and a separately installed official DSH executable. The CLI minimum remains
+> 0.1.5-rc.1; this release was exercised with DSH **0.2.2-rc.1** on Node
+> **24.18.1**. DSH's own runtime requirement is independent of the daemon's.
+> Initialize both ACP profiles before enabling their corresponding provider.
 
 ## What it does
 
-- Registers provider ID deepseek-harness with Paseo.
-- Launches `dsh --profile acp` through Paseo's provider launch: the daemon
-  finds `dsh` on its PATH or uses your command override, and the plugin starts
-  it with the SDK process helpers. Those helpers run Windows `.cmd` launchers
-  and stop the whole process tree on Windows.
+- Keeps provider ID `deepseek-harness` and profile `acp` for existing sessions.
+- Adds `deepseek-harness-daily`, using `acp-daily`, for sessions without REA.
+  The profile configuration, not the provider label, controls tool availability.
+- Uses Paseo's resolved command/environment and SDK process lifecycle helpers.
 - Reports the DeepSeek API balance in Paseo's **Usage** panel.
 - Uses Paseo's public runAcpProvider shim for ACP lifecycle, permissions,
   prompts, timeline mapping, usage and configuration.
@@ -45,23 +39,20 @@ patched Paseo app is required.
 
 ## Install prerequisites
 
-Install a verified official DSH version **on the daemon machine**, then check
-that the daemon can find the executable on its PATH. The npm `latest` dist-tag
-currently resolves to `0.2.1-rc.2` and `next` to `0.2.1-rc.3`; both are tested:
-
-~~~sh
-npm install -g --ignore-scripts @deepseek-ai/dsh@0.2.1-rc.2
-dsh --version
-~~~
+Install a verified official DSH version on the daemon machine. The current
+validated target is `0.2.2-rc.1`, requiring Node >=24.9.0. This deployment uses
+a pinned Node 24.18.1 launcher without replacing system Node. The managed
+infrastructure updater initializes `acp-daily` from the shipped ACP template,
+keeps the existing `acp` profile, and validates both before accepting an update.
 
 Configure a DeepSeek key through official DSH **Settings → Models** (`dsh web`),
 or its documented environment/configuration mechanism. The official local
 store is `$DSH_HOME/.credentials.yaml`, with owner-only permissions on POSIX.
 See the [official model configuration guide](https://github.com/deepseek-ai/deepseek-harness/blob/183f08e9c6dde7e36cd2318eaee70b0da08fb35e/docs/user/guide/providers.md).
 
-The plugin does not download, install, update or restart DSH. DSH itself owns
-credentials and provider configuration. The plugin does not mirror sessions or
-read private DSH transcripts.
+The provider plugin does not install or update DSH. It reads the selected
+DSH home's native `session.v4.jsonl.zstd` files during resume and reads a restored
+image's content-addressed object only when the user opens its image card.
 
 For the Usage panel, the plugin looks up `DEEPSEEK_API_KEY` the way DSH does:
 the daemon environment first, then `$DSH_HOME/.credentials.yaml`, then
@@ -71,9 +62,9 @@ the balance in the account's currency, for example `¥13.26`. Paseo 0.12.0-beta.
 links usage sources only to built-in providers, so the balance appears in the
 global Usage panel and not in an agent's own usage view.
 
-By default the daemon finds `dsh` on its PATH and runs `dsh --profile acp`.
-To use another installation or profile, set Paseo's standard provider command
-override in the daemon's `config.json` and run `paseo reload`:
+The reverse entry runs `dsh --profile acp`; the daily entry runs
+`dsh --profile acp-daily`. Override both commands when using a credential wrapper,
+then reload the configuration without restarting the daemon:
 
 ~~~json
 {
@@ -81,19 +72,20 @@ override in the daemon's `config.json` and run `paseo reload`:
     "providers": {
       "deepseek-harness": {
         "command": ["/opt/dsh/bin/dsh", "--profile", "acp"]
+      },
+      "deepseek-harness-daily": {
+        "command": ["/opt/dsh/bin/dsh", "--profile", "acp-daily"]
       }
     }
   }
 }
 ~~~
 
-The array replaces the whole default command, so keep `--profile` with a
-profile that speaks ACP over stdio, not the web/TUI profile. Custom profiles
-are untested. Beta.12 and earlier read `DSH_PASEO_COMMAND` and
-`DSH_PASEO_PROFILE` instead; move those values into `command`. Variables under
-`agents.providers.deepseek-harness.env` reach every DSH process. Session
-runtimes also get per-session Paseo overrides, so variables such as `DSH_HOME`
-are preserved for the session.
+Command overrides must still select an ACP profile, not the web/TUI profile.
+Both profiles can share `DSH_HOME` without moving sessions or attachments.
+Keep common model/Purge settings in the home patch and REA's MCP entry plus
+`reaMcpReady` barrier only in the `acp` profile patch. The daily profile must have
+neither. Session environment overrides remain effective, including `DSH_HOME`.
 
 The verified runtime compositions use CLI `0.1.5-rc.1` or `0.1.5-rc.2` with
 `@deepseek-ai/dsh-acp` `0.1.5-rc.2`, CLI `0.1.6-alpha.2` with
@@ -108,24 +100,26 @@ advertises; resuming against a peer without `session/resume` fails with a clear 
 ## ACP compatibility and limitations
 
 DSH advertises session/resume but not ACP's older top-level loadSession
-capability. Paseo's public ACP shim (0.8 through 0.12.0-beta.3) uses session/load when
-it sees persistence. A small typed stdio adapter therefore does the following:
+capability. Paseo's public ACP shim uses `session/load` when it sees persistence.
+The compatibility adapter therefore does the following:
 
 1. After initialize, if the peer has session/resume and does not have
    loadSession, it exposes loadSession only to the private shim-facing
    stream.
 2. It translates that stream's session/load request to session/resume,
    keeping the same session ID, cwd, MCP servers, request ID and other fields.
-3. It does not synthesize transcript replay. DSH resumes context without
-   replaying old updates.
+3. After a successful resume, it streams the native store in file order, decoding
+   concatenated zstd frames asynchronously under backpressure. It reports corrupt
+   or missing history without discarding a successful native resume.
 4. It never retries with a new session after a resume error.
 
-All other ACP frames pass through unchanged except for the narrow tool-output
-projection described above. Existing rawOutput wins, including null.
-Permission, error, cancellation, image, MCP, response and notification
-payloads are not flattened or discarded. The provider deliberately does not
-advertise or implement raw token deltas, commands, steering, plans,
-terminals, elicitation, client filesystem operations or other unsupported DSH
+Live ACP frames retain the tool-output projection above. Restored attachment
+references also produce a private `_dsh/history-attachment` extension because
+Paseo 0.15.3's standard user-message reducer ignores non-text ACP chunks. Image
+cards contain metadata, not base64; their RPC only reads replay-registered objects
+and checks their SHA256. Existing rawOutput wins, including null.
+The provider does not advertise or implement raw token deltas, commands, steering,
+plans, terminals, elicitation, client filesystem operations or other unsupported DSH
 surfaces. DSH model and reasoning configuration is exposed when the ACP
 server advertises it. The public ACP shim emits complete timeline snapshots;
 this plugin does not claim token-level or UI streaming.
@@ -147,70 +141,40 @@ The native Paseo timeline works without another plugin. Optional
 [Readable Agent Activity](https://github.com/geoqiao/paseo-stuff/tree/main/plugins/agent-activity)
 adds bounded readable previews; **that separate renderer** requires Full detail.
 
-**Displayed history after a reload:** when Paseo reopens a session, after
-`paseo agent reload` or a daemon restart, it rebuilds the timeline from the
-provider's replay and deletes the timeline it stored. DSH does not replay, so
-on Paseo 0.12.0-beta.2 and 0.13.0 the agent keeps its DSH context but shows an
-empty timeline. Paseo 0.13.0 restores history that an ACP agent replays during
-`session/load` (getpaseo/paseo#7717); DSH resumes with `session/resume`, which
-replays nothing, so that fix does not apply. Reloading the plugin keeps the timeline.
+**Displayed history after a reload:** text, thoughts, tool calls/results and
+stored images are reconstructed from DSH's native store. Tool calls without a
+result are never marked completed; recorded interrupted/error turns retain failure
+evidence. Runtime-context and skill-catalog injections are not shown as user text.
+Missing/corrupt history produces a visible `历史回放不完整` warning while native
+resume remains usable. Restored image bytes load on demand; file references retain
+their server location. No transcript or image is sent to a third-party service
+by the replay layer. No history is injected after a failed resume response.
 
-**Known side effects and boundaries:** catalog discovery uses ACP `session/new`
-and can leave empty sessions in DSH's native session list. DSH profile settings
-remain authoritative; the generic ACP shim does not inject Paseo's extra
-`systemPrompt`. Real vision/MCP services, custom profiles, Windows and native
-iOS/Android clients have not been exercised. See [verification](https://github.com/geoqiao/paseo-stuff/blob/main/plugins/deepseek-harness/docs/verification.md).
+**Known boundaries:** discovery can leave empty DSH sessions. DSH profile settings
+remain authoritative, and Paseo's extra system prompt is not injected by this
+adapter. Desktop-width and compact dark web UI, real Bash and image-model turns,
+and a cold missing-image resume were exercised on Linux/Paseo 0.15.3. Native
+iOS/Android and Windows were not exercised for this release.
 
 ## Paseo installation
 
-Review this trusted, unsandboxed plugin and install it on the intended daemon.
-On Paseo 0.11 or later, the reviewed [registry](https://paseo.sh/plugins) entry
-`geoqiao/deepseek-harness` installs the pinned npm package:
+Review this trusted, unsandboxed fork and install its pinned Git release:
 
 ~~~sh
-paseo plugin add geoqiao/deepseek-harness --host <your-host>
+paseo plugin add git:W1ndchaser-a/paseo-stuff:plugins/deepseek-harness --ref deepseek-harness-v0.1.2 --host <your-host>
 paseo plugin ls --host <your-host>
 ~~~
 
-To install the published npm package directly, run:
+Existing installations of this fork can use `paseo plugin update deepseek-harness
+--ref deepseek-harness-v0.1.2`. The Git build runs dependency installation and
+the full check command. The upstream npm/registry release does not contain this
+fork's replay and daily-profile changes.
 
-~~~sh
-paseo plugin add paseo-deepseek-harness --host <your-host>
-paseo plugin ls --host <your-host>
-~~~
-
-Paseo installs this package's runtime dependencies. The package omits the Git
-source build because that build runs `npm ci` and `npm run check`, which require
-the lockfile, tests and development dependencies; those are not included in the
-npm package. The `paseo-plugin.json` in the Git source retains those build steps.
-
-To install the pinned Git prerelease instead, run:
-
-~~~sh
-paseo plugin add git:geoqiao/paseo-stuff:plugins/deepseek-harness --ref deepseek-harness-v0.1.0-beta.13 --host <your-host>
-paseo plugin ls --host <your-host>
-~~~
-
-Paseo 0.11 reads a bare `owner/name` source as a registry ID, so the `git:`
-prefix is required. If the registry install fails with "npm artifact changed
-since review", the daemon's npm uses a registry mirror; see
-[the fix](https://github.com/geoqiao/paseo-stuff#if-a-registry-install-fails-with-npm-artifact-changed-since-review).
-
-Select **DeepSeek Harness** when creating an agent in Paseo. Model and thinking
-choices come from the installed DSH profile. Plugins and DSH tools are trusted,
-unsandboxed code; file permissions do not hide credentials from tools running
-as your OS user. This adapter does not add a security sandbox.
-
-The source manifest requires `>=0.11.0`, the first release whose SDK supplies
-the resolved launch, the process helpers, provider `status()` and usage
-sources. Under Paseo's requirements contract, a minimum-only range admits
-0.11.0 and every later release, including prereleases and future breaking
-releases; it is not a promise that untested versions work. Beta.13 is tested
-with the 0.11.4 SDK and on live 0.11.4, 0.12.0-beta.2 and 0.13.0 daemons on
-macOS; its checks also pass with the 0.13.0 SDK. Do not restart the daemon for this plugin. Follow Paseo's
-global plugin-enable and per-installation
-enable/disable rules; an existing disabled installation should remain
-disabled unless the user explicitly enables it.
+Select **DSH · 日常** for ordinary work or **DSH · 逆向** for REA. Both use the
+configured DSH model routes; the plugin neither changes those routes nor adds a
+sandbox. The source manifest and development SDK target Paseo 0.15.3. Update/reload
+only the plugin, not the daemon; an existing disabled plugin stays disabled unless
+the user explicitly enables it.
 
 For local development, run the checks below and install this plugin directory
 by its absolute path. Existing Git installations do not switch sources or pinned
@@ -243,7 +207,7 @@ npm run lint
 npm test
 ~~~
 
-The tests use the installed public Paseo SDK (pinned to 0.11.4), public
+The tests use the installed public Paseo SDK (pinned to 0.15.3), public
 `runAcpProvider`, ACP SDK 1.4.0 framing, and a fake ACP peer process. They cover catalog discovery,
 model and thinking options, multi-turn prompts, configuration, persistence
 resume, tool output fidelity, images, MCP, permissions, errors, cancellation,
@@ -253,6 +217,16 @@ probe, initialize, and prompt. Real DSH/model credentials are intentionally
 not part of the automated fixture.
 
 ## Verification record
+
+Version 0.1.2: 104 tests, server/client typechecks and lint passed. A real daily
+session executed Bash; a Gemini image turn was restored with its original 96x64
+image, rendered in desktop and compact dark layouts. A missing-image cold resume
+kept the conversation and displayed a warning. A 20,000-record synthetic store
+delivered its first frame in 5.31 ms versus 195.32 ms for the old whole-file reader;
+complete streaming replay took 653.95 ms, maximum event-loop delay 10.85 ms, with
+the final record preserved. This improves first paint/responsiveness, not total
+throughput. No production daemon restart was used.
+
 
 Automated checks use `npm run typecheck`, `npm run lint` and `npm test`.
 The [verification record](https://github.com/geoqiao/paseo-stuff/blob/main/plugins/deepseek-harness/docs/verification.md) distinguishes fake-peer protocol

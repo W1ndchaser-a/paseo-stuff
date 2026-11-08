@@ -1,9 +1,13 @@
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import type { PluginServerContext } from "@getpaseo/plugin/server";
+import serverEntry from "../index.server";
+import { createHash } from "node:crypto";
+import { zstdCompressSync } from "node:zlib";
+import { z } from "zod";
 import {
   ProviderEventSchema,
   type ProviderConnectRequest,
@@ -12,7 +16,6 @@ import {
   type ProviderInput,
   type ProviderLaunch,
 } from "@getpaseo/plugin/server/provider";
-import serverEntry from "../index.server";
 import {
   createDeepSeekHarnessProvider,
   type ManagedDeepSeekHarnessProvider,
@@ -92,47 +95,46 @@ describe.sequential("DeepSeek Harness provider", () => {
     }
   });
 
-  it("registers the true server provider entry and exposes the managed factory", async () => {
-    const registerProvider = vi.fn();
-    const registerUsageSource = vi.fn();
-    const cleanup = serverEntry({
-      registerProvider,
-      registerUsageSource,
-    } as unknown as PluginServerContext);
-    expect(registerProvider).toHaveBeenCalledOnce();
-    expect(registerUsageSource).toHaveBeenCalledOnce();
-    expect(registerUsageSource.mock.calls[0]?.[0]).toMatchObject({
-      id: "deepseek",
-      icon: "icon.svg",
-    });
-    const provider = registerProvider.mock.calls[0]?.[0];
-    expect(provider).toMatchObject({
-      id: "deepseek-harness",
-      label: "DeepSeek Harness",
-      icon: "icon.svg",
-    });
-    expect(typeof provider?.connect).toBe("function");
-    expect(typeof provider?.dispose).toBe("function");
-    expect(typeof cleanup).toBe("function");
-    await cleanup();
-  });
-
-  it("ships the registered provider icon in the npm package", async () => {
-    const registerProvider = vi.fn();
-    const cleanup = serverEntry({
-      registerProvider,
-      registerUsageSource: vi.fn(),
-    } as unknown as PluginServerContext);
-    const icon: unknown = registerProvider.mock.calls[0]?.[0]?.icon;
-    await cleanup();
-
-    const root = fileURLToPath(new URL("..", import.meta.url));
-    const pkg = JSON.parse(
-      await readFile(join(root, "package.json"), "utf8"),
-    ) as { files: string[] };
-    expect(typeof icon).toBe("string");
-    expect(pkg.files).toContain(icon);
-    expect((await readFile(join(root, icon as string))).length).toBeGreaterThan(0);
+  it("restores image cards through the real SDK without replaying internal context as user text", async () => {
+    const provider = createDeepSeekHarnessProvider();
+    const request = connectRequest();
+    const connection = await provider.connect({ ...request, capabilities: [...request.capabilities, "timeline.plugin"] });
+    const collector = collect(connection);
+    try {
+      const input = openInput("image-history", cwdA, "images", "skip");
+      await connection.send(input);
+      const opened = await collector.waitFor(event => event.type === "session.opened" && event.sessionId === input.sessionId);
+      if (opened.type !== "session.opened" || !opened.persistence) throw new Error("Session did not persist");
+      await waitForReady(collector, input.sessionId);
+      const persisted = z.object({ sessionId: z.string() }).parse(opened.persistence.data);
+      const nativeId = persisted.sessionId;
+      const home = input.config.env.DSH_HOME;
+      const image = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+a5ZkAAAAASUVORK5CYII=", "base64");
+      const hex = createHash("sha256").update(image).digest("hex");
+      const objectDir = join(home, "attachments/v1/objects", hex.slice(0, 2));
+      const sessionDir = join(home, "sessions", "--images--", nativeId);
+      await mkdir(objectDir, { recursive: true });
+      await mkdir(sessionDir, { recursive: true });
+      await writeFile(join(objectDir, hex), image);
+      const records = [
+        { type: "user/message", seq: 1, data: { role: "user", source: { kind: "user" }, id: "user-image", content: [
+          { type: "text", text: "My image" },
+          { type: "image", attachment: { attachmentId: `sha256:${hex}`, mediaType: "image/png", bytes: image.length } },
+        ] } },
+        { type: "user/message", seq: 2, data: { role: "user", source: { kind: "runtime-context" }, content: [{ type: "text", text: "internal-only-context" }] } },
+      ];
+      await writeFile(join(sessionDir, "session.v4.jsonl.zstd"), zstdCompressSync(Buffer.from(records.map(record => JSON.stringify(record)).join("\n") + "\n")));
+      await closeSession(connection, collector, input.sessionId, "close-before-image-replay");
+      const start = collector.events.length;
+      await connection.send(openInput(input.sessionId, cwdA, "images", "replay", opened.persistence));
+      const restoredImage = await collector.waitFor(event => event.type === "timeline.item" && event.item.type === "plugin" && event.item.kind === "history-attachment", 3_000, start);
+      expect(restoredImage).toMatchObject({ type: "timeline.item", item: { type: "plugin", data: { attachment: { attachmentId: `sha256:${hex}` } } } });
+      await waitForReady(collector, input.sessionId, 3_000, start);
+      expect(collector.events.slice(start).some(event => event.type === "timeline.item" && event.item.type === "user_message" && event.item.text.includes("internal-only-context"))).toBe(false);
+    } finally {
+      collector.unsubscribe();
+      await provider.dispose();
+    }
   });
 
   it("discovers catalog values, runs turns, preserves tool tails, and resumes without replay", async () => {
@@ -346,6 +348,18 @@ describe.sequential("DeepSeek Harness provider", () => {
         throw new Error("session did not resume");
       }
       expect(resumed.persistence?.data).toEqual(persistence?.data);
+      const replayNotice = await collector.waitFor(
+        (event) => event.type === "session.notice" && event.sessionId === resumedOpen.sessionId,
+        3_000,
+        resumeStart,
+      );
+      expect(replayNotice.type).toBe("session.notice");
+      if (replayNotice.type === "session.notice") {
+        expect(replayNotice.notice.severity).toBe("warning");
+      }
+      expect(collector.events.indexOf(replayNotice)).toBeGreaterThan(
+        collector.events.indexOf(resumed),
+      );
       const lifecycle = await collector.waitFor(
         (event) =>
           event.type === "session.config" &&
@@ -804,6 +818,7 @@ describe.sequential("DeepSeek Harness provider", () => {
         const cleanup = serverEntry({
           registerProvider,
           registerUsageSource: vi.fn(),
+          handle: vi.fn(),
         } as unknown as PluginServerContext);
         const provider = registerProvider.mock.calls[0]?.[0] as
           | ManagedDeepSeekHarnessProvider

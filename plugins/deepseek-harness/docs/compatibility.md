@@ -1,5 +1,17 @@
 # ACP reasoning compatibility
 
+## Current fork: 0.1.2 / Paseo 0.15.3
+
+Native DSH context resume is unchanged. This fork additionally streams the v4
+session store after a successful resume, preserves truthful tool states, and
+surfaces degraded replay as a provider notice. Images use the private attachment
+extension and an on-demand client renderer because the SDK's standard historical
+user-message reducer only accepts text. History files are not cloned or rewritten.
+The current SDK namespaces chunk IDs by kind; tests assert stable grouping and
+separate reasoning/answer content rather than its internal ID representation.
+
+## Historical reasoning fix
+
 DSH's ACP bridge (`@deepseek-ai/dsh-acp`, `assistantUpdates`, still present in
 0.1.7-rc.2 and 0.2.0-rc.1) sends a message's `agent_thought_chunk` and
 `agent_message_chunk` with the same `messageId`. ACP v1
