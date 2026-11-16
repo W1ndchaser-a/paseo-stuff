@@ -123,3 +123,10 @@ resumes them through `session/load` with history replay on the next prompt. The
 agent manager treats an existing durable timeline as already primed and does not
 append the provider replay. A live 0.14.0 check confirmed that the resumed agent kept
 its context and that the timeline gained only the new turn.
+
+## Paseo 0.16.0
+
+Typecheck, lint and all 251 regression tests pass with the published 0.16.0 SDK.
+Minimum requirements and the 0.11.4 development pins are unchanged. The official
+DSH rc.3 process and persistence checks above used SDK 0.15.4; no new model turn
+or live UI check was performed for 0.16.0.

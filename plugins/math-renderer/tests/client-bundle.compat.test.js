@@ -11,7 +11,7 @@ const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const hermesPlatform = { darwin: "osx-bin", linux: "linux64-bin", win32: "win64-bin" }[process.platform];
 const hermes = process.env.HERMES_BIN || join(root, "node_modules/react-native/sdks/hermesc", hermesPlatform || "unsupported", process.platform === "win32" ? "hermes.exe" : "hermes");
 
-// Paseo v0.15.4 compiler options (unchanged from 0.13.2) and eager CommonJS interop, followed by string
+// Paseo v0.16.0 compiler options (unchanged from 0.13.2) and eager CommonJS interop, followed by string
 // evaluation without Metro/Babel. Pinned source:
 // https://github.com/getpaseo/paseo/blob/8c6de842a3157530c26a7a94c78a3d647fb96ce9/packages/server/src/server/plugins/compiler-build.ts
 async function bundle(entry) {

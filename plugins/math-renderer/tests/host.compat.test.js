@@ -16,7 +16,7 @@ const input = (head = [], tail = [], display = "full") =>
   ({ head, tail, display, transform, isTurnActive: head.length > 0, expandedTurnHostIds: new Set() });
 const DISPLAYS = ["full", "collapseToolCalls", "collapseTurns"];
 
-describe("Paseo 0.15.4 whole-message presentation", () => {
+describe("Paseo 0.16.0 whole-message presentation", () => {
   it.each(DISPLAYS)("keeps streaming native and renders the whole completed reply with stable history identity (%s)", display => {
     const present = createStreamPresentation();
     const text = "Before\n\n$$x^2$$\n\nAfter";
@@ -86,30 +86,28 @@ describe("Paseo 0.15.4 whole-message presentation", () => {
       createStreamPresentation()({ ...input([], tail, "collapseTurns"), transform: mode });
     it("folds a turn whose reply has no formula", () => {
       const result = present(turn("Plain answer"));
-      expect(result.tail.map(item => item.id)).toEqual(["u", "r", "next"]);
-      expect(result.turns.turnsByHostId.has("u")).toBe(true);
+      expect(result.tail.map(item => item.id)).toEqual(["u", "turn-summary:u", "r", "next"]);
+      expect(result.turns.summaryRowsByHostId.has("u")).toBe(true);
     });
-    // The host finds a turn's reply by kind assistant_message, and a transformer can return
-    // only plugin rows, so a completed formula reply keeps its turn open. Native-reply mode folds it.
-    it("documents that a completed formula reply keeps its turn unfolded", () => {
-      const result = present(turn("$$x^2$$"));
-      expect(result.turns.turnsByHostId.size).toBe(0);
-      expect(result.tail.map(item => item.kind)).toEqual(["user_message", "tool_call", "plugin", "user_message"]);
-      expect(result.groupsByHostId.get("one").run.calls.map(item => item.id)).toEqual(["one", "two"]);
-      const native = present(turn("$$x^2$$"), null);
-      expect(native.tail.map(item => item.id)).toEqual(["u", "r", "next"]);
+    it("folds a completed formula reply while preserving its rendered row", () => {
+      const result = present(turn("$x^2$"));
+      expect(result.turns.summaryRowsByHostId.has("u")).toBe(true);
+      expect(result.tail.map(item => item.kind)).toEqual(["user_message", "turn_summary", "plugin", "user_message"]);
+      expect(result.tail[2]).toMatchObject({ sourceId: "r", sourceKind: "assistant_message" });
+      const native = present(turn("$x^2$"), null);
+      expect(native.tail.map(item => item.id)).toEqual(["u", "turn-summary:u", "r", "next"]);
     });
-    it("documents a partial fold up to an earlier native reply", () => {
+    it("folds through the final formula reply after an earlier native reply", () => {
       const tail = [user("u", "t"), tool("one", "t"), message("Checking.", "ack", "t"), tool("two", "t"),
-        tool("three", "t"), message("$$x^2$$", "r", "t")];
+        tool("three", "t"), message("$x^2$", "r", "t")];
       const result = present(tail);
-      expect(result.turns.turnsByHostId.has("u")).toBe(true);
-      expect(result.tail.map(item => item.kind)).toEqual(["user_message", "assistant_message", "tool_call", "plugin"]);
+      expect(result.turns.summaryRowsByHostId.has("u")).toBe(true);
+      expect(result.tail.map(item => item.kind)).toEqual(["user_message", "turn_summary", "plugin"]);
     });
     it("keeps the latest formula reply native while it streams", () => {
       const live = createStreamPresentation()({ ...input([message("$$x^2", "r", "t")], turn("").slice(0, 3), "collapseTurns") });
       expect(live.head.map(item => item.kind)).toEqual(["assistant_message"]);
-      expect(live.turns.turnsByHostId.size).toBe(0);
+      expect(live.turns.summaryRowsByHostId.size).toBe(0);
     });
   });
 });

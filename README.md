@@ -8,25 +8,25 @@ shared runtime or root-hoisted dependency tree.
 
 | Plugin | Directory | Status / important limits |
 | --- | --- | --- |
-| Math Renderer | [plugins/math-renderer](plugins/math-renderer) | Paseo 0.13 or later; block and inline LaTeX after reply completion, with formula-free blocks in the host Markdown renderer. Use native-reply mode to search formula source with chat Find or to fold formula replies under Collapse turns. Native mobile acceptance is not complete. |
+| Math Renderer | [plugins/math-renderer](plugins/math-renderer) | Paseo 0.13 or later; block and inline LaTeX after reply completion, with formula-free blocks in the host Markdown renderer. Use native-reply mode to search formula source with chat Find or, on Paseo 0.14 through 0.15.4, to fold formula replies under Collapse turns. Native mobile acceptance is not complete. |
 | Readable Agent Activity | [plugins/agent-activity](plugins/agent-activity) | Paseo 0.13 or later. Tool cards need the Full chat display; before using Collapse tool calls, Collapse turns or Summary, choose "Activity: use native rows" in each client's Command Center. |
 | DeepSeek Harness | [plugins/deepseek-harness](plugins/deepseek-harness) | Paseo 0.11 or later. Provider adapter; requires a separately installed, compatible official DSH executable and credentials. |
 
-The current stable verification target is Paseo **0.15.4**. Activity **0.1.0-beta.14**
+The current stable verification target is Paseo **0.16.0**. Activity **0.1.0-beta.14**
 and Math Renderer **0.1.0-beta.8** require Paseo **0.13.0**. Their checks pass with
-the pinned **0.13.2** SDK and the **0.15.4** SDK; host-pipeline tests use actual
-0.15.4 sources in every chat display mode. Both packed plugins load on an isolated
-macOS 0.15.3 daemon. The upstream reply-folding fix is merged but absent from that
-stable release, so the native-row/native-reply workarounds still apply. The 0.15.4
-checks cover SDKs and the offline host pipeline; no 0.15.4 live UI or daemon load
-is claimed. Prerelease checks are recorded separately.
+the pinned **0.13.2** SDK and the **0.16.0** SDK; host-pipeline tests use actual
+0.16.0 sources in every chat display mode. Both packed plugins load on an isolated
+macOS 0.15.3 daemon. Paseo 0.16.0 fixes formula-reply folding; Activity still
+needs native rows for collapsed displays. The 0.16.0 checks cover SDKs and the
+offline host pipeline. Live UI checks remain on 0.14.0; prerelease checks are
+recorded separately.
 
 DeepSeek Harness requires Paseo **0.11.0**. **Beta.19** restores original displayed
 history after context compaction and pruning, including repeated prefix compaction,
 and recognises DSH model/reasoning selection records. Its checks
-pass with the pinned **0.11.4** and target **0.15.4** SDKs, and the production
+pass with the pinned **0.11.4** and target **0.16.0** SDKs. With SDK 0.15.4, the production
 provider initializes, lists sessions/models and reopens persistence with official
-**DSH 0.2.2-rc.2** without model calls. **Beta.21** also preserves history across
+**DSH 0.2.2-rc.3** without model calls. **Beta.21** also preserves history across
 Team-mode metadata and the official batch-append API. The beta.19 tarball loaded
 on an isolated 0.15.3 daemon, with provider diagnostic Ready and catalog discovery
 passing.
@@ -53,16 +53,14 @@ paseo plugin add geoqiao/math-renderer --host <host:port>
 
 ### If a registry install fails with "npm artifact changed since review"
 
-This error means the daemon's npm uses a registry mirror, such as
-`registry.npmmirror.com`. A registry record pins the `registry.npmjs.org` tarball URL.
-npm replaces that host with the mirror. Paseo 0.12.0 through 0.15.4 still compare
-that URL as well as the package integrity, so the changed URL rejects the install.
-The [upstream report](https://github.com/getpaseo/paseo/issues/7951) is closed and
-[the fix](https://github.com/getpaseo/paseo/pull/8756) is merged on main, but the
-0.15.4 tagged installer does not contain it. Keep the workaround until a release
-contains the fix and the affected install path has been verified.
+On Paseo 0.12.0 through 0.15.4, a registry mirror can cause this error because
+those installers compare the tarball URL as well as package integrity. Paseo 0.16.0
+includes [the fix](https://github.com/getpaseo/paseo/pull/8756): its tagged artifact
+comparison accepts different mirror URLs with the same version and integrity,
+and rejects changed integrity. This comparison was tested directly; a real mirror
+installation on 0.16.0 has not been exercised.
 
-Run this command as the user that runs the daemon, then install again:
+For affected older hosts, run this command as the user that runs the daemon, then install again:
 
 ```sh
 npm config set replace-registry-host never

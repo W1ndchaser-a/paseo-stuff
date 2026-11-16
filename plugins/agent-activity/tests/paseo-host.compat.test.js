@@ -28,7 +28,7 @@ const present = ({ head = [], tail = [], display = "full", transform = cards, is
   createStreamPresentation()({ head, tail, display, transform, isTurnActive, expandedTurnHostIds: new Set(expanded) });
 const kinds = rows => rows.map(row => row.kind === "plugin" ? row.itemKind : row.kind);
 
-describe("Paseo 0.15.4 actual presentation pipeline", () => {
+describe("Paseo 0.16.0 actual presentation pipeline", () => {
   describe("Full", () => {
     it.each(["running", "completed", "failed", "canceled"])("retains all %s tool data", status => {
       const original = [call("one"), call("two", status)];
@@ -138,40 +138,40 @@ describe("Paseo 0.15.4 actual presentation pipeline", () => {
       call("two", "completed", "exec", undefined, "t"), reply("r", "t")];
     it("folds a tool turn with native rows exactly as without the plugin", () => {
       const native = present({ tail: turn, display: "collapseTurns", transform: null });
-      expect(native.tail.map(item => item.id)).toEqual(["u", "r"]);
-      expect(native.turns.turnsByHostId.get("u").summary.tools.thoughtCount).toBe(1);
+      expect(native.tail.map(item => item.id)).toEqual(["u", "turn-summary:u", "r"]);
+      expect(native.turns.summaryRowsByHostId.get("u").tools.thoughtCount).toBe(1);
     });
     it("documents that tool cards keep a tool-only turn open", () => {
       const custom = present({ tail: turn, display: "collapseTurns" });
-      expect(custom.turns.turnsByHostId.size).toBe(0);
+      expect(custom.turns.summaryRowsByHostId.size).toBe(0);
       expect(kinds(custom.tail)).toEqual(["user_message", "colorful-reasoning", "colorful-tool-call", "colorful-tool-call", "assistant_message"]);
     });
     it("hides cards inside a turn that folds for an earlier reply", () => {
       const tail = [user("u", "t"), reply("ack", "t"), call("one", "completed", "exec", undefined, "t"), reply("r", "t")];
       const custom = present({ tail, display: "collapseTurns" });
-      expect(custom.tail.map(item => item.id)).toEqual(["u", "r"]);
+      expect(custom.tail.map(item => item.id)).toEqual(["u", "turn-summary:u", "r"]);
       const opened = present({ tail, display: "collapseTurns", expanded: ["u"] });
-      expect(kinds(opened.tail)).toEqual(["user_message", "assistant_message", "colorful-tool-call", "assistant_message"]);
+      expect(kinds(opened.tail)).toEqual(["user_message", "turn_summary", "assistant_message", "colorful-tool-call", "assistant_message"]);
     });
     it("folds a turn started by another agent's message around its user row", () => {
       const tail = [agentMessage("m", "t"), call("one", "completed", "exec", undefined, "t"),
         call("two", "completed", "exec", undefined, "t"), reply("r", "t")];
       const native = present({ tail, display: "collapseTurns", transform: null });
-      expect(native.tail.map(item => item.id)).toEqual(["m", "r"]);
+      expect(native.tail.map(item => item.id)).toEqual(["m", "turn-summary:m", "r"]);
       expect(native.tail[0].kind).toBe("user_message");
       // Native rows fold it the same way; with cards the turn host is still the native row.
       const custom = present({ tail, display: "collapseTurns" });
       expect(custom.tail[0]).toEqual(native.tail[0]);
       const withAck = [tail[0], reply("ack", "t"), ...tail.slice(1)];
-      expect(present({ tail: withAck, display: "collapseTurns" }).tail.map(item => item.id)).toEqual(["m", "r"]);
+      expect(present({ tail: withAck, display: "collapseTurns" }).tail.map(item => item.id)).toEqual(["m", "turn-summary:m", "r"]);
       // Before beta.14 the message became a card, which is neither a user row nor a turn host.
       const legacy = present({ tail: withAck, display: "collapseTurns", transform: using([{ ...tools, transform: input => ({
         items: [{ type: "plugin", kind: "colorful-tool-call", version: 1, data: { name: input.item.name } }] }) }]) });
-      expect(legacy.turns.turnsByHostId.size).toBe(0);
+      expect(legacy.turns.summaryRowsByHostId.size).toBe(0);
     });
     it("keeps the latest turn open while it streams", () => {
       const live = present({ tail: turn.slice(0, -1), head: [reply("r", "t")], display: "collapseTurns", transform: null });
-      expect(live.turns.turnsByHostId.size).toBe(0);
+      expect(live.turns.summaryRowsByHostId.size).toBe(0);
     });
   });
 });

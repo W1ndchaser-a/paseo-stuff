@@ -1,5 +1,14 @@
 # Verification and limits
 
+## Paseo 0.16.0 stable target (2026-11-16)
+
+- Typecheck, lint and **251 tests** pass with the minimum pinned SDK and the no-save **0.16.0 SDK**.
+- Production-provider regression tests pass through the public SDK. The official DSH rc.3 initialization and fresh-process persistence evidence below remains tied to SDK 0.15.4.
+- UI host fixtures use release commit `c54bc39e7997c03a07402c09df2e825889432557`; no runtime plugin code or minimum requirement changes.
+- These are SDK and offline integration checks. No new desktop, web-client, native-mobile or real-model acceptance is claimed.
+- The CI package-load and isolated daemon checks now target **0.16.0**.
+
+
 ## DSH 0.2.2-rc.3 (2026-11-14)
 
 - Official npm `latest` remains 0.2.2-rc.1; `next` selects **0.2.2-rc.3**.

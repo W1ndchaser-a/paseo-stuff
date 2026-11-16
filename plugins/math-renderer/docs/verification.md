@@ -1,5 +1,14 @@
 # Verification scope
 
+## Paseo 0.16.0 stable target (2026-11-16)
+
+- Typecheck, lint and **97 tests** pass with the minimum pinned SDK and the no-save **0.16.0 SDK**.
+- The released host pipeline folds completed formula replies, including a final formula after an earlier plain-text reply. Streaming remains native; native-reply mode remains available for formula-source search.
+- UI host fixtures use release commit `c54bc39e7997c03a07402c09df2e825889432557`; no runtime plugin code or minimum requirement changes.
+- These are SDK and offline integration checks. No new desktop, web-client, native-mobile or real-model acceptance is claimed.
+- The CI package-load and isolated daemon checks now target **0.16.0**.
+
+
 ## Paseo 0.16.0-beta.1 prerelease review (2026-11-11)
 
 - Typecheck, lint and **97 tests** pass with the no-save beta SDK, using the

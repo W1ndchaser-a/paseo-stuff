@@ -11,7 +11,7 @@ const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const hermesPlatform = { darwin: "osx-bin", linux: "linux64-bin", win32: "win64-bin" }[process.platform];
 const hermes = process.env.HERMES_BIN || join(root, "node_modules/react-native/sdks/hermesc", hermesPlatform || "unsupported", process.platform === "win32" ? "hermes.exe" : "hermes");
 
-// Match Paseo v0.15.4 compiler-build.ts (same options as 0.13.2): neutral + ES2020 with
+// Match Paseo v0.16.0 compiler-build.ts (same options as 0.13.2): neutral + ES2020 with
 // module/main fields, lowered async and eager CJS interop, then evaluate the wrapped bundle
 // from a string (no Metro/Babel pass).
 // https://github.com/getpaseo/paseo/blob/8c6de842a3157530c26a7a94c78a3d647fb96ce9/packages/server/src/server/plugins/compiler-build.ts

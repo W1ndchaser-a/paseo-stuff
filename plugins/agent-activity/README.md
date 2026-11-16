@@ -2,7 +2,7 @@
 
 **Formatted, highlighted tool-call JSON. Twenty-line previews. Recognizable tool icons.**
 
-**Version 0.1.0-beta.14** · [Release notes](CHANGELOG.md) · Paseo 0.13 or later, checked on 0.15.4. Tool cards need the Full
+**Version 0.1.0-beta.14** · [Release notes](CHANGELOG.md) · Paseo 0.13 or later, checked on 0.16.0. Tool cards need the Full
 chat display; a Command Center action switches to native rows for Collapse tool calls, Collapse turns or Summary.
 
 ## What it does
@@ -79,26 +79,25 @@ Virtual-list remounts reset local disclosure state.
 ## Compatibility
 
 **Paseo 0.13.0 or later · tool cards need the Full chat display · experimental beta.**
-It requires 0.13.0 and pins the 0.13.2 SDK; its checks also pass with the 0.15.4 SDK,
-and its host tests run on unmodified 0.15.4 sources. The last live web-client check
+It requires 0.13.0 and pins the 0.13.2 SDK; its checks also pass with the 0.16.0 SDK,
+and its host tests run on unmodified 0.16.0 sources. The last live web-client check
 used a 0.14.0 daemon and web client under all three chat display modes. See
-[verification](docs/verification.md) for the separate 0.15.4 checks. The manifest sets
-only a minimum, `>=0.13.0`, as Paseo recommends; releases after 0.15.4 are not tested.
+[verification](docs/verification.md) for the separate 0.16.0 checks. The manifest sets
+only a minimum, `>=0.13.0`, as Paseo recommends; releases after 0.16.0 are not tested.
 For Paseo 0.8 to 0.12, keep beta.11.
 
 Paseo transforms each original call **before** grouping and turn folding. All calls
-remain visible, but plugin cards bypass grouping. In Paseo 0.14 through 0.15.4,
+remain visible, but plugin cards bypass grouping. In Paseo 0.14 through 0.16.0,
 **Collapse turns** (the default for new installations) counts only native tool calls
 and Thinking rows as a turn's work. A
 turn whose only output is cards and one reply therefore stays open. A turn with an
 earlier reply still folds, and its cards fold with it. Native plan/approval tools,
 messages from other agents and heartbeats pass through, preserving host suppression,
 expandable plan cards, user-style agent-message rows and turn boundaries. Paseo
-0.15.4 still has no display-mode API for plugins, so the plugin cannot switch by itself.
+0.16.0 still has no display-mode API for plugins, so the plugin cannot switch by itself.
 The transformed-work folding bug is tracked in upstream
 [#8875](https://github.com/getpaseo/paseo/issues/8875), which is still open. The separate
-plugin-reply fix [#8811](https://github.com/getpaseo/paseo/pull/8811) is merged on main
-but absent from the 0.15.4 tag; it does not resolve transformed tool/Thinking work.
+plugin-reply fix [#8811](https://github.com/getpaseo/paseo/pull/8811) ships in 0.16.0; it does not resolve transformed tool/Thinking work.
 
 ### Switching between cards and native rows
 
@@ -116,7 +115,7 @@ The plugin does not detect or change the host display preference and does not in
 private app state. With cards active, collapsed displays show every call ungrouped. Do not
 enable two plugins replacing the same tool-call timeline items.
 
-Pinned 0.15.4 host-pipeline tests cover Full, Collapse tool calls and Collapse turns:
+Pinned 0.16.0 host-pipeline tests cover Full, Collapse tool calls and Collapse turns:
 native rows regroup existing history and fold turns, cards come back ungrouped, and
 agent-message and heartbeat rows match the host's own presentation. Hermes engine tests and compact browser previews are
 not on-device mobile UI tests. [Compatibility evidence](docs/compatibility.md).

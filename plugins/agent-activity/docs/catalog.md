@@ -24,8 +24,8 @@ does not immediately update the static live page. Registry caveat changes requir
 a small update PR; merging or submitting that PR is not proof of deployment.
 
 The entry discloses the beta limitation that cards need the Full chat display.
-That caveat remains valid on 0.15.4: upstream #8875 is open, and the separate
-plugin-reply fix #8811 is merged on main but absent from the release tag. `platforms` is omitted
+That caveat remains valid on 0.16.0: upstream #8875 is open. The separate
+plugin-reply fix #8811 ships in 0.16.0 and leaves transformed-work grouping unchanged. `platforms` is omitted
 because the implementation is not OS-restricted; the caveat distinguishes a
 tested macOS host from untested native mobile clients.
 

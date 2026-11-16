@@ -3,6 +3,6 @@
   "private": true,
   "description": "Pinned, prebuilt npm CLI for package and Windows daemon smoke checks.",
   "dependencies": {
-    "@getpaseo/cli": "0.15.4"
+    "@getpaseo/cli": "0.16.0"
   }
 }

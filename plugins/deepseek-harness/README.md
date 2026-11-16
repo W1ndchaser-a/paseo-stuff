@@ -186,7 +186,7 @@ not an assistant message, and includes no transcript, file paths, credentials or
 raw error text. Successful and legitimately empty replay stay silent. Opens that
 skip history, native `session/load` and failed resumes do not get this warning.
 Successful text/tool replay preserves full content within those bounds. Paseo
-0.11/0.12 may drop pre-response history. The automated SDK target is 0.15.4;
+0.11/0.12 may drop pre-response history. The automated SDK target is 0.16.0;
 text/tool history recovery was also checked on the macOS 0.15.3 desktop without
 a new model prompt. Native mobile history recovery remains untested.
 This is a compatibility fallback for an unpublished DSH file format, to be removed
@@ -272,7 +272,7 @@ the resolved launch, the process helpers, provider `status()` and usage
 sources. Under Paseo's requirements contract, a minimum-only range admits
 0.11.0 and every later release, including prereleases and future breaking
 releases; it is not a promise that untested versions work. Typecheck, lint and
-all 251 tests pass with the pinned 0.11.4 SDK and the no-save 0.15.4 SDK.
+all 251 tests pass with the pinned 0.11.4 SDK and the no-save 0.16.0 SDK.
 The production provider factory also passes no-inference checks against official
 DSH 0.2.2-rc.3 on Node 24.18.0 with SDK 0.15.4, including persistence reopen in a
 fresh process after an official batched append of synthetic text and Team-mode records. Real model turns ran on macOS daemons 0.11.4, 0.12.0-beta.2,
